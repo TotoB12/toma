@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "SimpleMessagingApp",
+    "slug": "simplemessagingapp",
+    "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "4fd488c1-dc59-40c6-aacb-3e3951958434"
+      },
+      "firebase": {
+        "apiKey": "AIzaSyAOJHjrK-tn7_LfWXtrkBApkRMFnIkJYG8",
+        "authDomain": "toma-totob12.firebaseapp.com",
+        "projectId": "toma-totob12",
+        "storageBucket": "toma-totob12.appspot.com",
+        "messagingSenderId": "184718671115",
+        "appId": "1:184718671115:web:32bfd8f90791aef0dcf60e",
+        "measurementId": "G-E35DS55TBR"
+      }
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}
