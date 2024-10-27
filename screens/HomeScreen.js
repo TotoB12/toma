@@ -1,18 +1,25 @@
 // screens/HomeScreen.js
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, 
-  StyleSheet, Alert, ActivityIndicator 
+  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList
 } from 'react-native';
 import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import { ref, onValue } from 'firebase/database';
+import { Ionicons } from '@expo/vector-icons';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // State variables for modal and search functionality
+  const [modalVisible, setModalVisible] = useState(false);
+  const [allUsers, setAllUsers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
 
   const handleSignOut = () => {
     signOut(auth)
@@ -24,6 +31,23 @@ const HomeScreen = () => {
       });
   };
 
+  // Set up the header with the plus icon using useLayoutEffect
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerShown: true,
+      headerRight: () => (
+        <TouchableOpacity onPress={() => setModalVisible(true)}>
+          <Ionicons name="ios-add" size={24} color="#fff" style={{ marginRight: 15 }} />
+        </TouchableOpacity>
+      ),
+      headerStyle: {
+        backgroundColor: '#000',
+      },
+      headerTintColor: '#fff',
+    });
+  }, [navigation]);
+
+  // Fetch current user information
   useEffect(() => {
     const user = auth.currentUser;
     if (user) {
@@ -47,6 +71,46 @@ const HomeScreen = () => {
       setLoading(false);
     }
   }, []);
+
+  // Fetch all users when the modal is visible
+  useEffect(() => {
+    if (modalVisible) {
+      const usersRef = ref(database, 'users');
+      const unsubscribe = onValue(usersRef, (snapshot) => {
+        const data = snapshot.val();
+        if (data) {
+          const usersArray = Object.keys(data).map(uid => ({ uid, ...data[uid] }));
+          setAllUsers(usersArray);
+        }
+      });
+
+      return () => unsubscribe();
+    }
+  }, [modalVisible]);
+
+  // Handle the search functionality
+  const handleSearch = (text) => {
+    setSearchQuery(text);
+
+    if (text.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+
+    const filteredUsers = allUsers.filter(user => {
+      const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
+      const email = user.email.toLowerCase();
+      const phoneNumber = user.phoneNumber;
+
+      return (
+        fullName.includes(text.toLowerCase()) ||
+        email.includes(text.toLowerCase()) ||
+        phoneNumber.includes(text)
+      );
+    });
+
+    setSearchResults(filteredUsers);
+  };
 
   if (loading) {
     return (
@@ -78,6 +142,47 @@ const HomeScreen = () => {
       <TouchableOpacity style={styles.button} onPress={handleSignOut}>
         <Text style={styles.buttonText}>Sign Out</Text>
       </TouchableOpacity>
+
+      {/* Modal for searching users */}
+      <Modal
+        animationType="slide"
+        transparent={false}
+        visible={modalVisible}
+        onRequestClose={() => {
+          setModalVisible(!modalVisible);
+        }}
+      >
+        <View style={styles.modalContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search by name, email, or phone number"
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={handleSearch}
+          />
+          <FlatList
+            data={searchResults}
+            keyExtractor={item => item.uid}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => {
+                  setModalVisible(false);
+                  navigation.navigate('Chat', { userId: item.uid });
+                }}
+              >
+                <Text style={styles.resultText}>{item.firstName} {item.lastName}</Text>
+              </TouchableOpacity>
+            )}
+          />
+          <TouchableOpacity
+            onPress={() => setModalVisible(!modalVisible)}
+            style={styles.closeButton}
+          >
+            <Text style={styles.closeButtonText}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
     </View>
   );
 };
@@ -123,6 +228,36 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#000', // Black text
     fontSize: 16,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+    padding: 20,
+  },
+  searchInput: {
+    height: 50,
+    width: '100%',
+    borderColor: '#fff',
+    borderWidth: 1,
+    borderRadius: 5,
+    paddingHorizontal: 10,
+    color: '#fff',
+    marginBottom: 15,
+  },
+  resultText: {
+    color: '#fff',
+    fontSize: 18,
+    paddingVertical: 10,
+    borderBottomColor: '#444',
+    borderBottomWidth: 1,
+  },
+  closeButton: {
+    marginTop: 20,
+    alignSelf: 'center',
+  },
+  closeButtonText: {
+    color: '#1E90FF',
+    fontSize: 18,
   },
 });
 
