@@ -8,7 +8,7 @@ import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import { ref, onValue } from 'firebase/database';
-import { Ionicons } from '@expo/vector-icons';
+import { AntDesign } from '@expo/vector-icons';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -37,7 +37,7 @@ const HomeScreen = () => {
       headerShown: true,
       headerRight: () => (
         <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <Ionicons name="ios-add" size={24} color="#fff" style={{ marginRight: 15 }} />
+          <AntDesign name="pluscircle" size={24} color="#fff" style={{ marginRight: 15 }} />
         </TouchableOpacity>
       ),
       headerStyle: {
