@@ -2,13 +2,14 @@
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, 
-  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList
+  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView, Image
 } from 'react-native';
 import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
 import { ref, onValue } from 'firebase/database';
-import { AntDesign } from '@expo/vector-icons';
+import { AntDesign, FontAwesome } from '@expo/vector-icons'; // Import FontAwesome
+import { StatusBar } from 'expo-status-bar'; // To manage status bar
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -116,6 +117,7 @@ const HomeScreen = () => {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#1E90FF" />
+        <StatusBar style="light" />
       </View>
     );
   }
@@ -127,6 +129,7 @@ const HomeScreen = () => {
         <TouchableOpacity style={styles.button} onPress={handleSignOut}>
           <Text style={styles.buttonText}>Sign Out</Text>
         </TouchableOpacity>
+        <StatusBar style="light" />
       </View>
     );
   }
@@ -135,6 +138,7 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
+      <StatusBar style="light" />
       <Text style={styles.title}>Welcome, {firstName} {lastName}!</Text>
       <Text style={styles.infoText}>Email: {email}</Text>
       <Text style={styles.infoText}>Phone: {phoneNumber}</Text>
@@ -152,7 +156,16 @@ const HomeScreen = () => {
           setModalVisible(!modalVisible);
         }}
       >
-        <View style={styles.modalContainer}>
+        <SafeAreaView style={styles.modalContainer}>
+          {/* Header */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>New Chat</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <AntDesign name="close" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Search Input */}
           <TextInput
             style={styles.searchInput}
             placeholder="Search by name, email, or phone number"
@@ -160,29 +173,42 @@ const HomeScreen = () => {
             value={searchQuery}
             onChangeText={handleSearch}
           />
+
+          {/* Search Results */}
           <FlatList
             data={searchResults}
             keyExtractor={item => item.uid}
             renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setModalVisible(false);
-                  navigation.navigate('Chat', { userId: item.uid });
-                }}
-              >
-                <Text style={styles.resultText}>{item.firstName} {item.lastName}</Text>
-              </TouchableOpacity>
+              <View>
+                <TouchableOpacity
+                  style={styles.userItem}
+                  onPress={() => {
+                    setModalVisible(false);
+                    navigation.navigate('Chat', { userId: item.uid });
+                  }}
+                >
+                  {item.avatar && item.avatar !== 'none' ? (
+                    <Image source={{ uri: item.avatar }} style={styles.avatar} />
+                  ) : (
+                    <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
+                  )}
+                  <View style={styles.userInfo}>
+                    <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
+                    <Text style={styles.userDetails}>{item.email}</Text>
+                    <Text style={styles.userDetails}>{item.phoneNumber}</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.divider} />
+              </View>
             )}
+            ListEmptyComponent={
+              searchQuery.trim() !== '' ? (
+                <Text style={styles.noResultsText}>No users found.</Text>
+              ) : null
+            }
           />
-          <TouchableOpacity
-            onPress={() => setModalVisible(!modalVisible)}
-            style={styles.closeButton}
-          >
-            <Text style={styles.closeButtonText}>Close</Text>
-          </TouchableOpacity>
-        </View>
+        </SafeAreaView>
       </Modal>
-
     </View>
   );
 };
@@ -234,6 +260,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
     padding: 20,
   },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  modalTitle: {
+    fontSize: 24,
+    color: '#fff',
+    textAlign: 'center',
+    flex: 1,
+  },
   searchInput: {
     height: 50,
     width: '100%',
@@ -244,20 +282,42 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginBottom: 15,
   },
-  resultText: {
-    color: '#fff',
-    fontSize: 18,
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 10,
-    borderBottomColor: '#444',
-    borderBottomWidth: 1,
   },
-  closeButton: {
-    marginTop: 20,
-    alignSelf: 'center',
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
   },
-  closeButtonText: {
-    color: '#1E90FF',
+  avatarIcon: {
+    marginRight: 10,
+  },
+  userInfo: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  userName: {
     fontSize: 18,
+    color: '#fff',
+    marginBottom: 2,
+  },
+  userDetails: {
+    fontSize: 14,
+    color: '#888',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#444',
+    marginVertical: 5,
+  },
+  noResultsText: {
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
   },
 });
 

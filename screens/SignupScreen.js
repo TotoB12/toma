@@ -43,12 +43,13 @@ const SignupScreen = () => {
         // Signed up successfully
         const user = userCredential.user;
 
-        // Store additional user info in Realtime Database
+        // Store additional user info in Realtime Database with avatar set to 'none'
         set(ref(database, 'users/' + user.uid), {
           firstName,
           lastName,
           phoneNumber,
-          email
+          email,
+          avatar: 'none', // Initialize avatar as 'none'
         })
         .then(() => {
           Alert.alert('Success', 'Account created successfully!');
