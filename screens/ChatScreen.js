@@ -263,6 +263,11 @@ const ChatScreen = () => {
                         renderItem={renderMessage}
                         keyExtractor={item => item.id}
                         contentContainerStyle={styles.messagesList}
+                        onContentSizeChange={() => {
+                            if (flatListRef.current && messages.length > 0) {
+                                flatListRef.current.scrollToEnd({ animated: false });
+                            }
+                        }}
                     />
                 </View>
 
