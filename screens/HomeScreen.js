@@ -2,7 +2,8 @@
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import {
   View, Text, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView, Image
+  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView, Image,
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
@@ -124,92 +125,116 @@ const HomeScreen = () => {
 
   if (!userInfo) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>No user information available.</Text>
-        <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-          <Text style={styles.buttonText}>Sign Out</Text>
-        </TouchableOpacity>
-        <StatusBar style="light" />
-      </View>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.container}>
+            <Text style={styles.errorText}>No user information available.</Text>
+            <TouchableOpacity style={styles.button} onPress={handleSignOut}>
+              <Text style={styles.buttonText}>Sign Out</Text>
+            </TouchableOpacity>
+            <StatusBar style="light" />
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     );
   }
 
   const { firstName, lastName, phoneNumber, email } = userInfo;
 
   return (
-    <View style={styles.container}>
-      <StatusBar style="light" />
-      <Text style={styles.title}>Welcome, {firstName} {lastName}!</Text>
-      <Text style={styles.infoText}>Email: {email}</Text>
-      <Text style={styles.infoText}>Phone: {phoneNumber}</Text>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <View style={styles.container}>
+          <StatusBar style="light" />
+          <Text style={styles.title}>Welcome, {firstName} {lastName}!</Text>
+          <Text style={styles.infoText}>Email: {email}</Text>
+          <Text style={styles.infoText}>Phone: {phoneNumber}</Text>
 
-      <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-        <Text style={styles.buttonText}>Sign Out</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={handleSignOut}>
+            <Text style={styles.buttonText}>Sign Out</Text>
+          </TouchableOpacity>
 
-      {/* Modal for searching users */}
-      <Modal
-        animationType="slide"
-        transparent={false}
-        visible={modalVisible}
-        onRequestClose={() => {
-          setModalVisible(!modalVisible);
-        }}
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          {/* Header */}
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>New Chat</Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <AntDesign name="close" size={24} color="#fff" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Search Input */}
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search by name, email, or phone number"
-            placeholderTextColor="#888"
-            value={searchQuery}
-            onChangeText={handleSearch}
-          />
-
-          {/* Search Results */}
-          <FlatList
-            data={searchResults}
-            keyExtractor={item => item.uid}
-            renderItem={({ item }) => (
-              <View>
-                <TouchableOpacity
-                  style={styles.userItem}
-                  onPress={() => {
-                    setModalVisible(false);
-                    navigation.navigate('Chat', { userId: item.uid }); // Pass userId
-                  }}
-                >
-                  {item.avatar && item.avatar !== 'none' ? (
-                    <Image source={{ uri: item.avatar }} style={styles.avatar} />
-                  ) : (
-                    <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
-                  )}
-                  <View style={styles.userInfo}>
-                    <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
-                    <Text style={styles.userDetails}>{item.email}</Text>
-                    <Text style={styles.userDetails}>{item.phoneNumber}</Text>
+          {/* Modal for searching users */}
+          <Modal
+            animationType="slide"
+            transparent={false}
+            visible={modalVisible}
+            onRequestClose={() => {
+              setModalVisible(!modalVisible);
+            }}
+          >
+            <KeyboardAvoidingView
+              style={styles.modalContainer}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+            >
+              <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                <SafeAreaView style={styles.modalInnerContainer}>
+                  {/* Header */}
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>New Chat</Text>
+                    <TouchableOpacity onPress={() => setModalVisible(false)}>
+                      <AntDesign name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
                   </View>
-                </TouchableOpacity>
-                <View style={styles.divider} />
-              </View>
-            )}
-            ListEmptyComponent={
-              searchQuery.trim() !== '' ? (
-                <Text style={styles.noResultsText}>No users found.</Text>
-              ) : null
-            }
-          />
-        </SafeAreaView>
-      </Modal>
-    </View>
+
+                  {/* Search Input */}
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by name, email, or phone number"
+                    placeholderTextColor="#888"
+                    value={searchQuery}
+                    onChangeText={handleSearch}
+                  />
+
+                  {/* Search Results */}
+                  <FlatList
+                    data={searchResults}
+                    keyExtractor={item => item.uid}
+                    renderItem={({ item }) => (
+                      <View>
+                        <TouchableOpacity
+                          style={styles.userItem}
+                          onPress={() => {
+                            setModalVisible(false);
+                            navigation.navigate('Chat', { userId: item.uid }); // Pass userId
+                          }}
+                        >
+                          {item.avatar && item.avatar !== 'none' ? (
+                            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+                          ) : (
+                            <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
+                          )}
+                          <View style={styles.userInfo}>
+                            <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
+                            <Text style={styles.userDetails}>{item.email}</Text>
+                            <Text style={styles.userDetails}>{item.phoneNumber}</Text>
+                          </View>
+                        </TouchableOpacity>
+                        <View style={styles.divider} />
+                      </View>
+                    )}
+                    ListEmptyComponent={
+                      searchQuery.trim() !== '' ? (
+                        <Text style={styles.noResultsText}>No users found.</Text>
+                      ) : null
+                    }
+                  />
+                </SafeAreaView>
+              </TouchableWithoutFeedback>
+            </KeyboardAvoidingView>
+          </Modal>
+        </View>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -223,6 +248,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000', // Black background
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  innerContainer: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 20,
@@ -256,6 +287,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   modalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  modalInnerContainer: {
     flex: 1,
     backgroundColor: '#000',
     padding: 20,

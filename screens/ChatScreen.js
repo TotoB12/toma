@@ -2,13 +2,15 @@
 import React, { useEffect, useState, useLayoutEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, 
-  StyleSheet, TextInput, SafeAreaView, Image 
+  StyleSheet, TextInput, SafeAreaView, Image, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, ScrollView 
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AntDesign, FontAwesome } from '@expo/vector-icons';
-import { database } from '../firebase';
-import { ref, onValue } from 'firebase/database';
+import { database, auth } from '../firebase'; // Ensure auth is imported
+import { ref, onValue, push } from 'firebase/database'; // Added push for sending messages
 import { StatusBar } from 'expo-status-bar';
+import { Alert } from 'react-native';
+import { useHeaderHeight } from '@react-navigation/elements'; // Import useHeaderHeight
 
 const ChatScreen = () => {
   const navigation = useNavigation();
@@ -16,6 +18,9 @@ const ChatScreen = () => {
   const { userId } = route.params; // Get the userId from navigation params
   const [chatUser, setChatUser] = useState(null);
   const [message, setMessage] = useState('');
+  const [messages, setMessages] = useState([]);
+
+  const headerHeight = useHeaderHeight(); // Get the header height
 
   useLayoutEffect(() => {
     // Customize the header
@@ -40,10 +45,11 @@ const ChatScreen = () => {
       ),
       headerStyle: {
         backgroundColor: '#000',
+        height: headerHeight, // Set header height dynamically
       },
       headerTintColor: '#fff',
     });
-  }, [navigation, chatUser]);
+  }, [navigation, chatUser, headerHeight]);
 
   useEffect(() => {
     // Fetch the chat user's information
@@ -68,31 +74,39 @@ const ChatScreen = () => {
     if (message.trim() === '') return;
     // Placeholder for send functionality
     Alert.alert('Message Sent', message);
-    setMessage('');
+      setMessage('');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar style="light" />
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={headerHeight + (Platform.OS === 'ios' ? 20 : 0)} // Dynamic offset
+    >
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+        <SafeAreaView style={styles.container}>
+          <StatusBar style="light" />
       {/* Placeholder for messages */}
       <View style={styles.messagesContainer}>
         <Text style={styles.placeholderText}>Chat functionality coming soon!</Text>
-      </View>
-      {/* Input Bar */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.textInput}
-          placeholder="Type a message"
-          placeholderTextColor="#888"
-          value={message}
-          onChangeText={setMessage}
-          multiline
-        />
-        <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
-          <AntDesign name="arrowright" size={24} color="#fff" />
-        </TouchableOpacity>
-      </View>
-    </SafeAreaView>
+              </View>
+          {/* Input Bar */}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.textInput}
+              placeholder="Type a message"
+              placeholderTextColor="#888"
+              value={message}
+              onChangeText={setMessage}
+              multiline
+            />
+            <TouchableOpacity style={styles.sendButton} onPress={handleSend}>
+              <AntDesign name="arrowright" size={24} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </TouchableWithoutFeedback>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -119,10 +133,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   messagesContainer: {
-    flex: 1,
+    flexGrow: 1,
     padding: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   placeholderText: {
     color: '#888',
