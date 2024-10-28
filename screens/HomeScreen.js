@@ -8,9 +8,9 @@ import {
 import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
 import { useNavigation } from '@react-navigation/native';
-import { ref, onValue } from 'firebase/database';
-import { AntDesign, FontAwesome } from '@expo/vector-icons'; // Import FontAwesome
-import { StatusBar } from 'expo-status-bar'; // To manage status bar
+import { ref, onValue, get, off } from 'firebase/database';
+import { AntDesign, FontAwesome } from '@expo/vector-icons';
+import { StatusBar } from 'expo-status-bar';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
@@ -23,6 +23,10 @@ const HomeScreen = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
 
+  // State variables for chats
+  const [chats, setChats] = useState([]);
+  const [chatsLoading, setChatsLoading] = useState(true);
+
   const handleSignOut = () => {
     signOut(auth)
       .then(() => {
@@ -33,7 +37,7 @@ const HomeScreen = () => {
       });
   };
 
-  // Set up the header with the plus icon using useLayoutEffect
+  // Set up the header with the plus icon
   useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
@@ -74,6 +78,58 @@ const HomeScreen = () => {
     }
   }, []);
 
+  // Fetch user's chats
+  useEffect(() => {
+    const userChatsRef = ref(database, `user-chats/${auth.currentUser.uid}`);
+
+    const onUserChatsValueChange = snapshot => {
+      const userChatsData = snapshot.val();
+      if (userChatsData) {
+        const chatIds = Object.keys(userChatsData);
+
+        // Fetch chat data for each chat ID
+        Promise.all(chatIds.map(async (chatId) => {
+          const chatRef = ref(database, `chats/${chatId}`);
+          const chatSnapshot = await get(chatRef);
+          const chatData = chatSnapshot.val();
+
+          if (chatData) {
+            // Get the other participant
+            const otherUserId = chatData.participants.find(uid => uid !== auth.currentUser.uid);
+            // Get other user's info
+            const otherUserRef = ref(database, `users/${otherUserId}`);
+            const otherUserSnapshot = await get(otherUserRef);
+            const otherUserData = otherUserSnapshot.val();
+
+            return {
+              chatId,
+              otherUser: {
+                uid: otherUserId,
+                ...otherUserData
+              },
+              lastMessage: chatData.lastMessage
+            };
+          } else {
+            return null;
+          }
+        })).then(chatsData => {
+          // Remove nulls (if any chats failed to load)
+          setChats(chatsData.filter(chat => chat !== null));
+          setChatsLoading(false);
+        });
+      } else {
+        setChats([]);
+        setChatsLoading(false);
+      }
+    };
+
+    onValue(userChatsRef, onUserChatsValueChange);
+
+    return () => {
+      off(userChatsRef, 'value', onUserChatsValueChange);
+    };
+  }, []);
+
   // Fetch all users when the modal is visible
   useEffect(() => {
     if (modalVisible) {
@@ -81,7 +137,9 @@ const HomeScreen = () => {
       const unsubscribe = onValue(usersRef, (snapshot) => {
         const data = snapshot.val();
         if (data) {
-          const usersArray = Object.keys(data).map(uid => ({ uid, ...data[uid] }));
+          const usersArray = Object.keys(data)
+            .filter(uid => uid !== auth.currentUser.uid) // Exclude current user
+            .map(uid => ({ uid, ...data[uid] }));
           setAllUsers(usersArray);
         }
       });
@@ -128,7 +186,7 @@ const HomeScreen = () => {
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
       >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.container}>
@@ -143,24 +201,54 @@ const HomeScreen = () => {
     );
   }
 
-  const { firstName, lastName, phoneNumber, email } = userInfo;
+  const renderChatItem = ({ item }) => {
+    const { chatId, otherUser, lastMessage } = item;
+
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.chatItem}
+          onPress={() => {
+            navigation.navigate('Chat', { userId: otherUser.uid }); // Pass userId
+          }}
+        >
+          {otherUser.avatar && otherUser.avatar !== 'none' ? (
+            <Image source={{ uri: otherUser.avatar }} style={styles.avatar} />
+          ) : (
+            <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
+          )}
+          <View style={styles.chatInfo}>
+            <Text style={styles.chatName}>{otherUser.firstName} {otherUser.lastName}</Text>
+            <Text style={styles.chatLastMessage} numberOfLines={1}>
+              {lastMessage && lastMessage.content ? lastMessage.content : 'No messages yet'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        <View style={styles.divider} />
+      </View>
+    );
+  };
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <View style={styles.container}>
           <StatusBar style="light" />
-          <Text style={styles.title}>Welcome, {firstName} {lastName}!</Text>
-          <Text style={styles.infoText}>Email: {email}</Text>
-          <Text style={styles.infoText}>Phone: {phoneNumber}</Text>
-
-          <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-            <Text style={styles.buttonText}>Sign Out</Text>
-          </TouchableOpacity>
+          {chatsLoading ? (
+            <ActivityIndicator size="large" color="#1E90FF" />
+          ) : chats.length === 0 ? (
+            <Text style={styles.noChatsText}>You sure seem lonely. Create a new chat in the top right.</Text>
+          ) : (
+            <FlatList
+              data={chats}
+              keyExtractor={item => item.chatId}
+              renderItem={renderChatItem}
+            />
+          )}
 
           {/* Modal for searching users */}
           <Modal
@@ -174,7 +262,7 @@ const HomeScreen = () => {
             <KeyboardAvoidingView
               style={styles.modalContainer}
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20} // Adjust if you have a header
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <SafeAreaView style={styles.modalInnerContainer}>
@@ -205,7 +293,7 @@ const HomeScreen = () => {
                           style={styles.userItem}
                           onPress={() => {
                             setModalVisible(false);
-                            navigation.navigate('Chat', { userId: item.uid }); // Pass userId
+                            navigation.navigate('Chat', { userId: item.uid });
                           }}
                         >
                           {item.avatar && item.avatar !== 'none' ? (
@@ -353,6 +441,32 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     fontSize: 16,
+  },
+  noChatsText: {
+    color: '#fff',
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+    paddingHorizontal: 20,
+  },
+  chatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  chatInfo: {
+    marginLeft: 15,
+    flex: 1,
+  },
+  chatName: {
+    fontSize: 18,
+    color: '#fff',
+    marginBottom: 2,
+  },
+  chatLastMessage: {
+    fontSize: 14,
+    color: '#888',
   },
 });
 

@@ -9,7 +9,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AntDesign, FontAwesome } from '@expo/vector-icons';
 import { database, auth } from '../firebase';
-import { ref, onValue, push, get, set, serverTimestamp } from 'firebase/database';
+import { ref, onValue, push, get, set, serverTimestamp, off } from 'firebase/database';
 import { StatusBar } from 'expo-status-bar';
 import { useHeaderHeight } from '@react-navigation/elements';
 
@@ -26,75 +26,61 @@ const ChatScreen = () => {
     const currentUser = auth.currentUser;
     const headerHeight = useHeaderHeight();
 
-    // Function to create or get existing chat ID
-    const getOrCreateChat = async () => {
-        const chatParticipants = [currentUser.uid, userId].sort(); // Sort to ensure consistent chat ID
-
-        // Check if chat already exists
+    // Function to get existing chat ID
+    const getChatId = async () => {
         const userChatsRef = ref(database, `user-chats/${currentUser.uid}`);
         const snapshot = await get(userChatsRef);
 
         if (snapshot.exists()) {
             const userChats = snapshot.val();
-            const existingChatId = Object.keys(userChats).find(async (cid) => {
-                const chatRef = ref(database, `chats/${cid}/participants`);
-                const participantsSnap = await get(chatRef);
-                const participants = participantsSnap.val();
-                return participants &&
-                    participants.length === 2 &&
-                    participants.includes(userId) &&
-                    participants.includes(currentUser.uid);
-            });
+            const chatIds = Object.keys(userChats);
 
-            if (existingChatId) {
-                return existingChatId;
+            for (const cid of chatIds) {
+                const chatRef = ref(database, `chats/${cid}`);
+                const chatSnapshot = await get(chatRef);
+                const chatData = chatSnapshot.val();
+
+                if (chatData) {
+                    const participants = chatData.participants;
+                    if (
+                        participants.length === 2 &&
+                        participants.includes(userId) &&
+                        participants.includes(currentUser.uid)
+                    ) {
+                        return cid;
+                    }
+                }
             }
         }
-
-        // Create new chat if none exists
-        const newChatRef = push(ref(database, 'chats'));
-        const newChatId = newChatRef.key;
-
-        // Set up chat data
-        await set(ref(database, `chats/${newChatId}`), {
-            participants: chatParticipants,
-            createdAt: serverTimestamp(),
-            lastMessage: {
-                content: '',
-                timestamp: serverTimestamp(),
-                senderId: currentUser.uid
-            }
-        });
-
-        // Add chat reference to both users
-        await set(ref(database, `user-chats/${currentUser.uid}/${newChatId}`), true);
-        await set(ref(database, `user-chats/${userId}/${newChatId}`), true);
-
-        return newChatId;
+        return null; // Chat does not exist
     };
 
     // Initialize chat
     useEffect(() => {
         const initializeChat = async () => {
             try {
-                const cid = await getOrCreateChat();
-                setChatId(cid);
+                const cid = await getChatId();
+                if (cid) {
+                    setChatId(cid);
 
-                // Subscribe to messages
-                const messagesRef = ref(database, `messages/${cid}`);
-                const unsubscribe = onValue(messagesRef, (snapshot) => {
-                    const messagesData = snapshot.val();
-                    if (messagesData) {
-                        const messagesList = Object.entries(messagesData).map(([id, data]) => ({
-                            id,
-                            ...data
-                        })).sort((a, b) => a.timestamp - b.timestamp);
-                        setMessages(messagesList);
-                    }
-                    setLoading(false);
-                });
+                    // Subscribe to messages
+                    const messagesRef = ref(database, `messages/${cid}`);
+                    const unsubscribe = onValue(messagesRef, (snapshot) => {
+                        const messagesData = snapshot.val();
+                        if (messagesData) {
+                            const messagesList = Object.entries(messagesData).map(([id, data]) => ({
+                                id,
+                                ...data
+                            })).sort((a, b) => a.timestamp - b.timestamp);
+                            setMessages(messagesList);
+                        }
+                        setLoading(false);
+                    });
 
-                return () => unsubscribe();
+                    return () => off(messagesRef, 'value', unsubscribe);
+                } else {
+                    setLoading(false); // No existing chat
+                }
             } catch (error) {
                 console.error('Error initializing chat:', error);
                 setLoading(false);
@@ -116,7 +102,7 @@ const ChatScreen = () => {
             }
         });
 
-        return () => unsubscribe();
+        return () => off(userRef, 'value', unsubscribe);
     }, [userId]);
 
     // Set up header
@@ -149,21 +135,62 @@ const ChatScreen = () => {
     }, [navigation, chatUser, headerHeight]);
 
     const handleSend = async () => {
-        if (!message.trim() || !chatId) return;
-
-        const messageData = {
-            content: message.trim(),
-            timestamp: serverTimestamp(),
-            senderId: currentUser.uid,
-            seen: false
-        };
+        if (!message.trim()) return;
 
         try {
+            let cid = chatId;
+
+            if (!cid) {
+                // Create new chat
+                const newChatRef = push(ref(database, 'chats'));
+                cid = newChatRef.key;
+
+                const chatParticipants = [currentUser.uid, userId].sort();
+
+                // Set up chat data
+                await set(ref(database, `chats/${cid}`), {
+                    participants: chatParticipants,
+                    createdAt: serverTimestamp(),
+                    lastMessage: {
+                        content: '',
+                        timestamp: serverTimestamp(),
+                        senderId: currentUser.uid
+                    }
+                });
+
+                // Add chat reference to both users
+                await set(ref(database, `user-chats/${currentUser.uid}/${cid}`), true);
+                await set(ref(database, `user-chats/${userId}/${cid}`), true);
+
+                setChatId(cid);
+
+                // Subscribe to messages
+                const messagesRef = ref(database, `messages/${cid}`);
+                const unsubscribe = onValue(messagesRef, (snapshot) => {
+                    const messagesData = snapshot.val();
+                    if (messagesData) {
+                        const messagesList = Object.entries(messagesData).map(([id, data]) => ({
+                            id,
+                            ...data
+                        })).sort((a, b) => a.timestamp - b.timestamp);
+                        setMessages(messagesList);
+                    }
+                    setLoading(false);
+                });
+            }
+
+            const messageData = {
+                content: message.trim(),
+                timestamp: serverTimestamp(),
+                senderId: currentUser.uid,
+                seen: false
+            };
+
             // Add message to messages collection
-            await push(ref(database, `messages/${chatId}`), messageData);
+            await push(ref(database, `messages/${cid}`), messageData);
 
             // Update last message in chat
-            await set(ref(database, `chats/${chatId}/lastMessage`), messageData);
+            await set(ref(database, `chats/${cid}/lastMessage`), messageData);
 
             setMessage('');
         } catch (error) {
