@@ -3,7 +3,7 @@ import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView,
-  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
+  KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard, Image
 } from 'react-native';
 import { auth, database } from '../firebase';
 import { signOut } from 'firebase/auth';
@@ -22,6 +22,7 @@ const HomeScreen = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
+  const [selectedUsers, setSelectedUsers] = useState([]); // New state for selected users
 
   // Ref to store chat listeners
   const chatListeners = useRef({});
@@ -118,10 +119,16 @@ const HomeScreen = () => {
           const listener = onValue(chatRef, async (chatSnapshot) => {
             const chatData = chatSnapshot.val();
             if (chatData) {
-              const otherUserId = chatData.participants.find(uid => uid !== auth.currentUser.uid);
-              const otherUserRef = ref(database, `users/${otherUserId}`);
-              const otherUserSnapshot = await get(otherUserRef);
-              const otherUserData = otherUserSnapshot.val();
+              const otherUserIds = chatData.participants.filter(uid => uid !== auth.currentUser.uid);
+              const otherUsersData = [];
+
+              for (const uid of otherUserIds) {
+                const userRef = ref(database, `users/${uid}`);
+                const userSnapshot = await get(userRef);
+                if (userSnapshot.exists()) {
+                  otherUsersData.push({ uid, ...userSnapshot.val() });
+                }
+              }
 
               setChats(prevChats => {
                 // Remove existing chat if any
@@ -132,10 +139,7 @@ const HomeScreen = () => {
                   ...filteredChats,
                   {
                     chatId,
-                    otherUser: {
-                      uid: otherUserId,
-                      ...otherUserData
-                    },
+                    otherUsers: otherUsersData,
                     lastMessage: chatData.lastMessage
                   }
                 ].sort((a, b) => {
@@ -207,10 +211,7 @@ const HomeScreen = () => {
   const handleSearch = (text) => {
     setSearchQuery(text);
 
-    if (text.trim() === '') {
-      setSearchResults([]);
-      return;
-    }
+    const lowercasedText = text.toLowerCase();
 
     const filteredUsers = allUsers.filter(user => {
       const fullName = `${user.firstName} ${user.lastName}`.toLowerCase();
@@ -218,33 +219,92 @@ const HomeScreen = () => {
       const phoneNumber = user.phoneNumber;
 
       return (
-        fullName.includes(text.toLowerCase()) ||
-        email.includes(text.toLowerCase()) ||
-        phoneNumber.includes(text)
+        !selectedUsers.some(selected => selected.uid === user.uid) &&
+        (fullName.includes(lowercasedText) ||
+          email.includes(lowercasedText) ||
+          phoneNumber.includes(text))
       );
     });
 
     setSearchResults(filteredUsers);
   };
 
-  const renderChatItem = ({ item }) => {
-    const { otherUser, lastMessage } = item;
+  const toggleSelectUser = (user) => {
+    if (selectedUsers.some(selected => selected.uid === user.uid)) {
+      // Deselect user
+      setSelectedUsers(prevSelected => prevSelected.filter(u => u.uid !== user.uid));
+    } else {
+      // Select user
+      setSelectedUsers(prevSelected => [...prevSelected, user]);
+    }
+    handleSearch(searchQuery); // Update search results to reflect selection
+  };
+
+  const startChat = () => {
+    if (selectedUsers.length === 0) return;
+
+    setModalVisible(false);
+
+    // Navigate to ChatScreen with selected user IDs
+    const userIds = selectedUsers.map(user => user.uid);
+    navigation.navigate('Chat', { userIds });
+    setSelectedUsers([]);
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const renderUserItem = ({ item }) => {
+    const isSelected = selectedUsers.some(user => user.uid === item.uid);
 
     return (
       <View>
         <TouchableOpacity
           style={styles.listItem}
-          onPress={() => navigation.navigate('Chat', { userId: otherUser.uid })}
+          onPress={() => toggleSelectUser(item)}
         >
-          {otherUser.avatar && otherUser.avatar !== 'none' ? (
-            <Image source={{ uri: otherUser.avatar }} style={styles.avatar} />
+          {item.avatar && item.avatar !== 'none' ? (
+            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+          ) : (
+            <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
+          )}
+          <View style={styles.itemContent}>
+            <Text style={styles.primaryText}>{item.firstName} {item.lastName}</Text>
+            <Text style={styles.secondaryText}>{item.email}</Text>
+            <Text style={styles.secondaryText}>{item.phoneNumber}</Text>
+          </View>
+          {isSelected && (
+            <AntDesign name="checkcircle" size={24} color="#1E90FF" />
+          )}
+        </TouchableOpacity>
+        <View style={styles.divider} />
+      </View>
+    );
+  };
+
+  const renderChatItem = ({ item }) => {
+    const { otherUsers, lastMessage } = item;
+    const isGroup = otherUsers.length > 1;
+    const chatTitle = isGroup
+      ? otherUsers.map(u => `${u.firstName} ${u.lastName}`).join(', ')
+      : `${otherUsers[0].firstName} ${otherUsers[0].lastName}`;
+
+    return (
+      <View>
+        <TouchableOpacity
+          style={styles.listItem}
+          onPress={() => navigation.navigate('Chat', { userIds: otherUsers.map(u => u.uid) })}
+        >
+          {isGroup ? (
+            <FontAwesome name="users" size={50} color="#1E90FF" style={styles.avatarIcon} />
+          ) : otherUsers[0].avatar && otherUsers[0].avatar !== 'none' ? (
+            <Image source={{ uri: otherUsers[0].avatar }} style={styles.avatar} />
           ) : (
             <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
           )}
           <View style={styles.itemContent}>
             <View style={styles.itemHeader}>
-              <Text style={styles.primaryText}>
-                {otherUser.firstName} {otherUser.lastName}
+              <Text style={styles.primaryText} numberOfLines={1}>
+                {chatTitle}
               </Text>
               {lastMessage && lastMessage.timestamp && (
                 <Text style={styles.timestampText}>
@@ -262,29 +322,7 @@ const HomeScreen = () => {
     );
   };
 
-  const renderUserItem = ({ item }) => (
-    <View>
-      <TouchableOpacity
-        style={styles.listItem}
-        onPress={() => {
-          setModalVisible(false);
-          navigation.navigate('Chat', { userId: item.uid });
-        }}
-      >
-        {item.avatar && item.avatar !== 'none' ? (
-          <Image source={{ uri: item.avatar }} style={styles.avatar} />
-        ) : (
-          <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
-        )}
-        <View style={styles.itemContent}>
-          <Text style={styles.primaryText}>{item.firstName} {item.lastName}</Text>
-          <Text style={styles.secondaryText}>{item.email}</Text>
-          <Text style={styles.secondaryText}>{item.phoneNumber}</Text>
-        </View>
-      </TouchableOpacity>
-      <View style={styles.divider} />
-    </View>
-  );
+  const combinedData = [...selectedUsers, ...searchResults];
 
   if (loading) {
     return (
@@ -321,7 +359,12 @@ const HomeScreen = () => {
             animationType="slide"
             transparent={false}
             visible={modalVisible}
-            onRequestClose={() => setModalVisible(false)}
+            onRequestClose={() => {
+              setModalVisible(false);
+              setSelectedUsers([]);
+              setSearchQuery('');
+              setSearchResults([]);
+            }}
           >
             <KeyboardAvoidingView
               style={styles.modalContainer}
@@ -331,9 +374,19 @@ const HomeScreen = () => {
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <SafeAreaView style={styles.modalInnerContainer}>
                   <View style={styles.modalHeader}>
-                    <Text style={styles.modalTitle}>New Chat</Text>
-                    <TouchableOpacity onPress={() => setModalVisible(false)}>
+                    <TouchableOpacity onPress={() => {
+                      setModalVisible(false);
+                      setSelectedUsers([]);
+                      setSearchQuery('');
+                      setSearchResults([]);
+                    }}>
                       <AntDesign name="close" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.modalTitle}>
+                      {selectedUsers.length > 1 ? `Create Group with ${selectedUsers.length}` : 'Start Chat'}
+                    </Text>
+                    <TouchableOpacity onPress={startChat} disabled={selectedUsers.length === 0}>
+                      <AntDesign name="arrowright" size={24} color={selectedUsers.length === 0 ? '#555' : '#fff'} />
                     </TouchableOpacity>
                   </View>
 
@@ -346,7 +399,7 @@ const HomeScreen = () => {
                   />
 
                   <FlatList
-                    data={searchResults}
+                    data={combinedData}
                     keyExtractor={item => item.uid}
                     renderItem={renderUserItem}
                     style={styles.list}
