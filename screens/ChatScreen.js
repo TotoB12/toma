@@ -3,7 +3,7 @@ import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
     View, Text, TouchableOpacity,
     StyleSheet, TextInput, SafeAreaView, Image, KeyboardAvoidingView,
-    Platform, TouchableWithoutFeedback, Keyboard, FlatList,
+    Platform, Keyboard, FlatList,
     ActivityIndicator
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -16,7 +16,7 @@ import { useHeaderHeight } from '@react-navigation/elements';
 const ChatScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
-    const { userIds } = route.params; // Changed to userIds
+    const { userIds } = route.params;
     const [chatUsers, setChatUsers] = useState([]);
     const [message, setMessage] = useState('');
     const [messages, setMessages] = useState([]);
@@ -44,7 +44,7 @@ const ChatScreen = () => {
                 }
             }
         }
-        return null; // Chat does not exist
+        return null;
     };
 
     // Initialize chat
@@ -71,7 +71,7 @@ const ChatScreen = () => {
 
                     return () => off(messagesRef, 'value', unsubscribe);
                 } else {
-                    setLoading(false); // No existing chat
+                    setLoading(false);
                 }
             } catch (error) {
                 console.error('Error initializing chat:', error);
@@ -249,45 +249,45 @@ const ChatScreen = () => {
     }
 
     return (
-        <KeyboardAvoidingView
-            style={styles.container}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={headerHeight + (Platform.OS === 'ios' ? 20 : 0)}
-        >
-            <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-                <SafeAreaView style={styles.container}>
-                    <StatusBar style="light" />
+        <SafeAreaView style={styles.container}>
+            <StatusBar style="light" />
+            <KeyboardAvoidingView
+                style={styles.keyboardAvoidingView}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={headerHeight + (Platform.OS === 'ios' ? 20 : 0)}
+            >
+                <View style={styles.messagesContainer}>
                     <FlatList
                         ref={flatListRef}
                         data={messages}
                         renderItem={renderMessage}
                         keyExtractor={item => item.id}
-                        style={styles.messagesContainer}
                         contentContainerStyle={styles.messagesList}
                     />
-                    <View style={styles.inputContainer}>
-                        <TextInput
-                            style={styles.textInput}
-                            placeholder="Type a message"
-                            placeholderTextColor="#888"
-                            value={message}
-                            onChangeText={setMessage}
-                            multiline
-                        />
-                        <TouchableOpacity
-                            style={[
-                                styles.sendButton,
-                                !message.trim() && styles.sendButtonDisabled
-                            ]}
-                            onPress={handleSend}
-                            disabled={!message.trim()}
-                        >
-                            <AntDesign name="arrowright" size={24} color="#fff" />
-                        </TouchableOpacity>
-                    </View>
-                </SafeAreaView>
-            </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
+                </View>
+
+                <View style={styles.inputContainer}>
+                    <TextInput
+                        style={styles.textInput}
+                        placeholder="Type a message"
+                        placeholderTextColor="#888"
+                        value={message}
+                        onChangeText={setMessage}
+                        multiline
+                    />
+                    <TouchableOpacity
+                        style={[
+                            styles.sendButton,
+                            !message.trim() && styles.sendButtonDisabled
+                        ]}
+                        onPress={handleSend}
+                        disabled={!message.trim()}
+                    >
+                        <AntDesign name="arrowright" size={24} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+            </KeyboardAvoidingView>
+        </SafeAreaView>
     );
 };
 
@@ -301,6 +301,9 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
+    },
+    keyboardAvoidingView: {
+        flex: 1,
     },
     headerTitleContainer: {
         flexDirection: 'row',
@@ -324,7 +327,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
     },
     messagesList: {
-        paddingVertical: 10,
+        paddingVertical: 20,
     },
     messageContainer: {
         maxWidth: '80%',
