@@ -1,7 +1,7 @@
 // screens/HomeScreen.js
 import React, { useEffect, useState, useLayoutEffect } from 'react';
-import { 
-  View, Text, TouchableOpacity, 
+import {
+  View, Text, TouchableOpacity,
   StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView, Image
 } from 'react-native';
 import { auth, database } from '../firebase';
@@ -142,7 +142,7 @@ const HomeScreen = () => {
       <Text style={styles.title}>Welcome, {firstName} {lastName}!</Text>
       <Text style={styles.infoText}>Email: {email}</Text>
       <Text style={styles.infoText}>Phone: {phoneNumber}</Text>
-      
+
       <TouchableOpacity style={styles.button} onPress={handleSignOut}>
         <Text style={styles.buttonText}>Sign Out</Text>
       </TouchableOpacity>
@@ -184,7 +184,7 @@ const HomeScreen = () => {
                   style={styles.userItem}
                   onPress={() => {
                     setModalVisible(false);
-                    navigation.navigate('Chat', { userId: item.uid });
+                    navigation.navigate('Chat', { userId: item.uid }); // Pass userId
                   }}
                 >
                   {item.avatar && item.avatar !== 'none' ? (

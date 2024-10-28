@@ -8,6 +8,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import HomeScreen from './screens/HomeScreen';
+import ChatScreen from './screens/ChatScreen'; // Import ChatScreen
 
 const Stack = createNativeStackNavigator();
 
@@ -32,7 +33,10 @@ export default function App() {
         screenOptions={{ headerShown: false }}
       >
         {user ? (
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Chat" component={ChatScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Login" component={LoginScreen} />
