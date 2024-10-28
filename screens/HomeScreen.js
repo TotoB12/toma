@@ -1,8 +1,8 @@
 // screens/HomeScreen.js
-import React, { useEffect, useState, useLayoutEffect } from 'react';
+import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity,
-  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView, Image,
+  StyleSheet, Alert, ActivityIndicator, Modal, TextInput, FlatList, SafeAreaView,
   KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { auth, database } from '../firebase';
@@ -16,16 +16,15 @@ const HomeScreen = () => {
   const navigation = useNavigation();
   const [userInfo, setUserInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  // State variables for modal and search functionality
   const [modalVisible, setModalVisible] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-
-  // State variables for chats
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
+
+  // Ref to store chat listeners
+  const chatListeners = useRef({});
 
   const handleSignOut = () => {
     signOut(auth)
@@ -37,14 +36,19 @@ const HomeScreen = () => {
       });
   };
 
-  // Set up the header with the plus icon
+  // Set up the header with the plus icon and sign out button
   useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
       headerRight: () => (
-        <TouchableOpacity onPress={() => setModalVisible(true)}>
-          <AntDesign name="pluscircle" size={24} color="#fff" style={{ marginRight: 15 }} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => setModalVisible(true)}>
+            <AntDesign name="pluscircle" size={24} color="#fff" style={{ marginRight: 15 }} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSignOut}>
+            <AntDesign name="logout" size={24} color="#fff" style={{ marginRight: 15 }} />
+          </TouchableOpacity>
+        </View>
       ),
       headerStyle: {
         backgroundColor: '#000',
@@ -66,19 +70,35 @@ const HomeScreen = () => {
           Alert.alert('Error', 'No user data found!');
         }
         setLoading(false);
-      }, (error) => {
-        Alert.alert('Error', 'Failed to fetch user data: ' + error.message);
-        setLoading(false);
       });
 
-      // Clean up the listener on unmount
       return () => unsubscribe();
     } else {
       setLoading(false);
     }
   }, []);
 
-  // Fetch user's chats
+  // Format timestamp to relative time
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+
+    const now = new Date();
+    const messageDate = new Date(timestamp);
+    const diffInHours = (now - messageDate) / (1000 * 60 * 60);
+
+    if (diffInHours < 24) {
+      return messageDate.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } else if (diffInHours < 48) {
+      return 'Yesterday';
+    } else {
+      return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    }
+  };
+
+  // Fetch and listen to user's chats
   useEffect(() => {
     const userChatsRef = ref(database, `user-chats/${auth.currentUser.uid}`);
 
@@ -87,37 +107,67 @@ const HomeScreen = () => {
       if (userChatsData) {
         const chatIds = Object.keys(userChatsData);
 
-        // Fetch chat data for each chat ID
-        Promise.all(chatIds.map(async (chatId) => {
+        // Determine added and removed chatIds
+        const currentChatIds = Object.keys(chatListeners.current);
+        const addedChatIds = chatIds.filter(cid => !currentChatIds.includes(cid));
+        const removedChatIds = currentChatIds.filter(cid => !chatIds.includes(cid));
+
+        // Set up listeners for added chats
+        addedChatIds.forEach(chatId => {
           const chatRef = ref(database, `chats/${chatId}`);
-          const chatSnapshot = await get(chatRef);
-          const chatData = chatSnapshot.val();
+          const listener = onValue(chatRef, async (chatSnapshot) => {
+            const chatData = chatSnapshot.val();
+            if (chatData) {
+              const otherUserId = chatData.participants.find(uid => uid !== auth.currentUser.uid);
+              const otherUserRef = ref(database, `users/${otherUserId}`);
+              const otherUserSnapshot = await get(otherUserRef);
+              const otherUserData = otherUserSnapshot.val();
 
-          if (chatData) {
-            // Get the other participant
-            const otherUserId = chatData.participants.find(uid => uid !== auth.currentUser.uid);
-            // Get other user's info
-            const otherUserRef = ref(database, `users/${otherUserId}`);
-            const otherUserSnapshot = await get(otherUserRef);
-            const otherUserData = otherUserSnapshot.val();
+              setChats(prevChats => {
+                // Remove existing chat if any
+                const filteredChats = prevChats.filter(chat => chat.chatId !== chatId);
 
-            return {
-              chatId,
-              otherUser: {
-                uid: otherUserId,
-                ...otherUserData
-              },
-              lastMessage: chatData.lastMessage
-            };
-          } else {
-            return null;
-          }
-        })).then(chatsData => {
-          // Remove nulls (if any chats failed to load)
-          setChats(chatsData.filter(chat => chat !== null));
-          setChatsLoading(false);
+                // Add updated chat
+                return [
+                  ...filteredChats,
+                  {
+                    chatId,
+                    otherUser: {
+                      uid: otherUserId,
+                      ...otherUserData
+                    },
+                    lastMessage: chatData.lastMessage
+                  }
+                ].sort((a, b) => {
+                  const timeA = a.lastMessage?.timestamp || 0;
+                  const timeB = b.lastMessage?.timestamp || 0;
+                  return timeB - timeA;
+                });
+              });
+            }
+          });
+
+          // Store the listener so it can be removed later
+          chatListeners.current[chatId] = listener;
         });
+
+        // Remove listeners for removed chats
+        removedChatIds.forEach(chatId => {
+          const chatRef = ref(database, `chats/${chatId}`);
+          off(chatRef, 'value', chatListeners.current[chatId]);
+          delete chatListeners.current[chatId];
+          setChats(prevChats => prevChats.filter(chat => chat.chatId !== chatId));
+        });
+
+        setChatsLoading(false);
       } else {
+        // No chats
+        // Remove all existing listeners
+        Object.keys(chatListeners.current).forEach(chatId => {
+          const chatRef = ref(database, `chats/${chatId}`);
+          off(chatRef, 'value', chatListeners.current[chatId]);
+          delete chatListeners.current[chatId];
+        });
         setChats([]);
         setChatsLoading(false);
       }
@@ -127,10 +177,16 @@ const HomeScreen = () => {
 
     return () => {
       off(userChatsRef, 'value', onUserChatsValueChange);
+      // Remove all chat listeners
+      Object.keys(chatListeners.current).forEach(chatId => {
+        const chatRef = ref(database, `chats/${chatId}`);
+        off(chatRef, 'value', chatListeners.current[chatId]);
+        delete chatListeners.current[chatId];
+      });
     };
   }, []);
 
-  // Fetch all users when the modal is visible
+  // Fetch all users when modal is opened
   useEffect(() => {
     if (modalVisible) {
       const usersRef = ref(database, 'users');
@@ -138,7 +194,7 @@ const HomeScreen = () => {
         const data = snapshot.val();
         if (data) {
           const usersArray = Object.keys(data)
-            .filter(uid => uid !== auth.currentUser.uid) // Exclude current user
+            .filter(uid => uid !== auth.currentUser.uid)
             .map(uid => ({ uid, ...data[uid] }));
           setAllUsers(usersArray);
         }
@@ -148,7 +204,6 @@ const HomeScreen = () => {
     }
   }, [modalVisible]);
 
-  // Handle the search functionality
   const handleSearch = (text) => {
     setSearchQuery(text);
 
@@ -172,54 +227,32 @@ const HomeScreen = () => {
     setSearchResults(filteredUsers);
   };
 
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1E90FF" />
-        <StatusBar style="light" />
-      </View>
-    );
-  }
-
-  if (!userInfo) {
-    return (
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-      >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.container}>
-            <Text style={styles.errorText}>No user information available.</Text>
-            <TouchableOpacity style={styles.button} onPress={handleSignOut}>
-              <Text style={styles.buttonText}>Sign Out</Text>
-            </TouchableOpacity>
-            <StatusBar style="light" />
-          </View>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
-    );
-  }
-
   const renderChatItem = ({ item }) => {
-    const { chatId, otherUser, lastMessage } = item;
+    const { otherUser, lastMessage } = item;
 
     return (
       <View>
         <TouchableOpacity
-          style={styles.chatItem}
-          onPress={() => {
-            navigation.navigate('Chat', { userId: otherUser.uid }); // Pass userId
-          }}
+          style={styles.listItem}
+          onPress={() => navigation.navigate('Chat', { userId: otherUser.uid })}
         >
           {otherUser.avatar && otherUser.avatar !== 'none' ? (
             <Image source={{ uri: otherUser.avatar }} style={styles.avatar} />
           ) : (
             <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
           )}
-          <View style={styles.chatInfo}>
-            <Text style={styles.chatName}>{otherUser.firstName} {otherUser.lastName}</Text>
-            <Text style={styles.chatLastMessage} numberOfLines={1}>
+          <View style={styles.itemContent}>
+            <View style={styles.itemHeader}>
+              <Text style={styles.primaryText}>
+                {otherUser.firstName} {otherUser.lastName}
+              </Text>
+              {lastMessage && lastMessage.timestamp && (
+                <Text style={styles.timestampText}>
+                  {formatTimestamp(lastMessage.timestamp)}
+                </Text>
+              )}
+            </View>
+            <Text style={styles.secondaryText} numberOfLines={1}>
               {lastMessage && lastMessage.content ? lastMessage.content : 'No messages yet'}
             </Text>
           </View>
@@ -228,6 +261,39 @@ const HomeScreen = () => {
       </View>
     );
   };
+
+  const renderUserItem = ({ item }) => (
+    <View>
+      <TouchableOpacity
+        style={styles.listItem}
+        onPress={() => {
+          setModalVisible(false);
+          navigation.navigate('Chat', { userId: item.uid });
+        }}
+      >
+        {item.avatar && item.avatar !== 'none' ? (
+          <Image source={{ uri: item.avatar }} style={styles.avatar} />
+        ) : (
+          <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
+        )}
+        <View style={styles.itemContent}>
+          <Text style={styles.primaryText}>{item.firstName} {item.lastName}</Text>
+          <Text style={styles.secondaryText}>{item.email}</Text>
+          <Text style={styles.secondaryText}>{item.phoneNumber}</Text>
+        </View>
+      </TouchableOpacity>
+      <View style={styles.divider} />
+    </View>
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#1E90FF" />
+        <StatusBar style="light" />
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView
@@ -247,17 +313,15 @@ const HomeScreen = () => {
               data={chats}
               keyExtractor={item => item.chatId}
               renderItem={renderChatItem}
+              style={styles.list}
             />
           )}
 
-          {/* Modal for searching users */}
           <Modal
             animationType="slide"
             transparent={false}
             visible={modalVisible}
-            onRequestClose={() => {
-              setModalVisible(!modalVisible);
-            }}
+            onRequestClose={() => setModalVisible(false)}
           >
             <KeyboardAvoidingView
               style={styles.modalContainer}
@@ -266,7 +330,6 @@ const HomeScreen = () => {
             >
               <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                 <SafeAreaView style={styles.modalInnerContainer}>
-                  {/* Header */}
                   <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>New Chat</Text>
                     <TouchableOpacity onPress={() => setModalVisible(false)}>
@@ -274,7 +337,6 @@ const HomeScreen = () => {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Search Input */}
                   <TextInput
                     style={styles.searchInput}
                     placeholder="Search by name, email, or phone number"
@@ -283,33 +345,11 @@ const HomeScreen = () => {
                     onChangeText={handleSearch}
                   />
 
-                  {/* Search Results */}
                   <FlatList
                     data={searchResults}
                     keyExtractor={item => item.uid}
-                    renderItem={({ item }) => (
-                      <View>
-                        <TouchableOpacity
-                          style={styles.userItem}
-                          onPress={() => {
-                            setModalVisible(false);
-                            navigation.navigate('Chat', { userId: item.uid });
-                          }}
-                        >
-                          {item.avatar && item.avatar !== 'none' ? (
-                            <Image source={{ uri: item.avatar }} style={styles.avatar} />
-                          ) : (
-                            <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
-                          )}
-                          <View style={styles.userInfo}>
-                            <Text style={styles.userName}>{item.firstName} {item.lastName}</Text>
-                            <Text style={styles.userDetails}>{item.email}</Text>
-                            <Text style={styles.userDetails}>{item.phoneNumber}</Text>
-                          </View>
-                        </TouchableOpacity>
-                        <View style={styles.divider} />
-                      </View>
-                    )}
+                    renderItem={renderUserItem}
+                    style={styles.list}
                     ListEmptyComponent={
                       searchQuery.trim() !== '' ? (
                         <Text style={styles.noResultsText}>No users found.</Text>
@@ -335,44 +375,53 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#000', // Black background
+    backgroundColor: '#000',
+  },
+  list: {
+    flex: 1,
+    width: '100%',
+  },
+  listItem: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    padding: 15,
   },
-  innerContainer: {
-    flexGrow: 1,
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 15,
+  },
+  avatarIcon: {
+    marginRight: 15,
+  },
+  itemContent: {
+    flex: 1,
+  },
+  itemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    marginBottom: 4,
   },
-  title: {
-    fontSize: 28,
-    color: '#fff', // White text
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  infoText: {
+  primaryText: {
     fontSize: 18,
     color: '#fff',
-    marginBottom: 10,
+    flex: 1,
   },
-  errorText: {
-    fontSize: 18,
-    color: 'red',
-    marginBottom: 20,
-    textAlign: 'center',
+  secondaryText: {
+    fontSize: 14,
+    color: '#888',
   },
-  button: {
-    backgroundColor: '#fff', // White button
-    paddingVertical: 15,
-    paddingHorizontal: 50,
-    borderRadius: 5,
-    marginTop: 30,
+  timestampText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 10,
   },
-  buttonText: {
-    color: '#000', // Black text
-    fontSize: 16,
+  divider: {
+    height: 1,
+    backgroundColor: '#333',
+    marginLeft: 80, // Aligned with the end of the avatar
   },
   modalContainer: {
     flex: 1,
@@ -398,43 +447,13 @@ const styles = StyleSheet.create({
   searchInput: {
     height: 50,
     width: '100%',
-    borderColor: '#fff',
+    borderColor: '#333',
     borderWidth: 1,
     borderRadius: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 15,
     color: '#fff',
+    backgroundColor: '#111',
     marginBottom: 15,
-  },
-  userItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  avatarIcon: {
-    marginRight: 10,
-  },
-  userInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  userName: {
-    fontSize: 18,
-    color: '#fff',
-    marginBottom: 2,
-  },
-  userDetails: {
-    fontSize: 14,
-    color: '#888',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#444',
-    marginVertical: 5,
   },
   noResultsText: {
     color: '#fff',
@@ -448,25 +467,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
     fontSize: 16,
     paddingHorizontal: 20,
-  },
-  chatItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-  },
-  chatInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  chatName: {
-    fontSize: 18,
-    color: '#fff',
-    marginBottom: 2,
-  },
-  chatLastMessage: {
-    fontSize: 14,
-    color: '#888',
   },
 });
 
