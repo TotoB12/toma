@@ -231,6 +231,15 @@ const ChatScreen = () => {
         );
     };
 
+    // Scroll to bottom when messages change
+    useEffect(() => {
+        if (flatListRef.current && messages.length > 0) {
+            setTimeout(() => {
+                flatListRef.current.scrollToEnd({ animated: true });
+            }, 100);
+        }
+    }, [messages]);
+
     if (loading) {
         return (
             <View style={styles.loadingContainer}>
@@ -255,8 +264,6 @@ const ChatScreen = () => {
                         keyExtractor={item => item.id}
                         style={styles.messagesContainer}
                         contentContainerStyle={styles.messagesList}
-                        onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
-                        onLayout={() => flatListRef.current?.scrollToEnd()}
                     />
                     <View style={styles.inputContainer}>
                         <TextInput
@@ -317,7 +324,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
     },
     messagesList: {
-        paddingVertical: 20,
+        paddingVertical: 10,
     },
     messageContainer: {
         maxWidth: '80%',
