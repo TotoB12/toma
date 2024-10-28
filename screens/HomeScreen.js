@@ -319,7 +319,7 @@ const HomeScreen = () => {
       </View>
     );
   };
-  
+
   const renderSelectedUser = ({ item }) => {
     return (
       <View style={styles.selectedUserItem}>
@@ -557,7 +557,7 @@ const styles = StyleSheet.create({
   },
   removeUserIcon: {
     position: 'absolute',
-    top: -5,
+    top: 0,
     right: -5,
     backgroundColor: '#1E90FF',
     borderRadius: 9,
