@@ -22,7 +22,7 @@ const HomeScreen = () => {
   const [searchResults, setSearchResults] = useState([]);
   const [chats, setChats] = useState([]);
   const [chatsLoading, setChatsLoading] = useState(true);
-  const [selectedUsers, setSelectedUsers] = useState([]); // New state for selected users
+  const [selectedUsers, setSelectedUsers] = useState([]);
 
   // Ref to store chat listeners
   const chatListeners = useRef({});
@@ -219,10 +219,9 @@ const HomeScreen = () => {
       const phoneNumber = user.phoneNumber;
 
       return (
-        !selectedUsers.some(selected => selected.uid === user.uid) &&
-        (fullName.includes(lowercasedText) ||
-          email.includes(lowercasedText) ||
-          phoneNumber.includes(text))
+        fullName.includes(lowercasedText) ||
+        email.includes(lowercasedText) ||
+        phoneNumber.includes(text)
       );
     });
 
@@ -237,7 +236,6 @@ const HomeScreen = () => {
       // Select user
       setSelectedUsers(prevSelected => [...prevSelected, user]);
     }
-    handleSearch(searchQuery); // Update search results to reflect selection
   };
 
   const startChat = () => {
@@ -321,8 +319,26 @@ const HomeScreen = () => {
       </View>
     );
   };
-
-  const combinedData = [...selectedUsers, ...searchResults];
+  
+  const renderSelectedUser = ({ item }) => {
+    return (
+      <View style={styles.selectedUserItem}>
+        <View style={styles.selectedUserAvatarContainer}>
+          {item.avatar && item.avatar !== 'none' ? (
+            <Image source={{ uri: item.avatar }} style={styles.selectedUserAvatar} />
+          ) : (
+            <FontAwesome name="user-circle-o" size={50} color="#1E90FF" />
+          )}
+          <TouchableOpacity style={styles.removeUserIcon} onPress={() => toggleSelectUser(item)}>
+            <AntDesign name="closecircle" size={18} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.selectedUserName} numberOfLines={1}>
+          {item.firstName}
+        </Text>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -398,8 +414,20 @@ const HomeScreen = () => {
                     onChangeText={handleSearch}
                   />
 
+                  {selectedUsers.length > 0 && (
+                    <View style={styles.selectedUsersContainer}>
+                      <FlatList
+                        data={selectedUsers}
+                        keyExtractor={item => item.uid}
+                        renderItem={renderSelectedUser}
+                        horizontal={true}
+                        showsHorizontalScrollIndicator={false}
+                      />
+                    </View>
+                  )}
+
                   <FlatList
-                    data={combinedData}
+                    data={searchResults}
                     keyExtractor={item => item.uid}
                     renderItem={renderUserItem}
                     style={styles.list}
@@ -474,7 +502,7 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     backgroundColor: '#333',
-    marginLeft: 80, // Aligned with the end of the avatar
+    marginLeft: 80,
   },
   modalContainer: {
     flex: 1,
@@ -507,6 +535,39 @@ const styles = StyleSheet.create({
     color: '#fff',
     backgroundColor: '#111',
     marginBottom: 15,
+  },
+  selectedUsersContainer: {
+    flexDirection: 'row',
+    paddingVertical: 10,
+    borderBottomColor: '#333',
+    borderBottomWidth: 1,
+    marginBottom: 15,
+  },
+  selectedUserItem: {
+    alignItems: 'center',
+    marginRight: 15,
+  },
+  selectedUserAvatarContainer: {
+    position: 'relative',
+  },
+  selectedUserAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  removeUserIcon: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#1E90FF',
+    borderRadius: 9,
+  },
+  selectedUserName: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 5,
+    maxWidth: 60,
+    textAlign: 'center',
   },
   noResultsText: {
     color: '#fff',
