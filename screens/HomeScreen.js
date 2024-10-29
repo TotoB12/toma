@@ -27,27 +27,21 @@ const HomeScreen = () => {
   // Ref to store chat listeners
   const chatListeners = useRef({});
 
-  const handleSignOut = () => {
-    signOut(auth)
-      .then(() => {
-        // onAuthStateChanged observer in App.js will handle navigation
-      })
-      .catch((error) => {
-        Alert.alert('Error', error.message);
-      });
-  };
-
-  // Set up the header with the plus icon and sign out button
+  // Set up the header with the plus icon and settings button
   useLayoutEffect(() => {
     navigation.setOptions({
       headerShown: true,
+      headerLeft: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => navigation.navigate('Settings')}>
+            <AntDesign name="setting" size={24} color="#fff" style={{ marginRight: 0 }} />
+          </TouchableOpacity>
+        </View>
+      ),
       headerRight: () => (
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity onPress={() => setModalVisible(true)}>
-            <AntDesign name="pluscircle" size={24} color="#fff" style={{ marginRight: 15 }} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleSignOut}>
-            <AntDesign name="logout" size={24} color="#fff" style={{ marginRight: 15 }} />
+            <AntDesign name="pluscircle" size={24} color="#fff" style={{ marginLeft: 0 }} />
           </TouchableOpacity>
         </View>
       ),
