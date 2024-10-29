@@ -116,7 +116,7 @@ const ChatScreen = () => {
                     return (
                         <View style={styles.headerTitleContainer}>
                             {chatUser.avatar && chatUser.avatar !== 'none' ? (
-                                <Image source={{ uri: chatUser.avatar }} style={styles.headerAvatar} />
+                                <Image source={{ uri: chatUser.avatar.link }} style={styles.headerAvatar} />
                             ) : (
                                 <FontAwesome name="user-circle-o" size={40} color="#fff" style={styles.headerAvatarIcon} />
                             )}

@@ -255,7 +255,7 @@ const HomeScreen = () => {
           onPress={() => toggleSelectUser(item)}
         >
           {item.avatar && item.avatar !== 'none' ? (
-            <Image source={{ uri: item.avatar }} style={styles.avatar} />
+            <Image source={{ uri: item.avatar.link }} style={styles.avatar} />
           ) : (
             <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
           )}
@@ -289,7 +289,7 @@ const HomeScreen = () => {
           {isGroup ? (
             <FontAwesome name="users" size={50} color="#1E90FF" style={styles.avatarIcon} />
           ) : otherUsers[0].avatar && otherUsers[0].avatar !== 'none' ? (
-            <Image source={{ uri: otherUsers[0].avatar }} style={styles.avatar} />
+            <Image source={{ uri: otherUsers[0].avatar.link }} style={styles.avatar} />
           ) : (
             <FontAwesome name="user-circle-o" size={50} color="#1E90FF" style={styles.avatarIcon} />
           )}
@@ -319,7 +319,7 @@ const HomeScreen = () => {
       <View style={styles.selectedUserItem}>
         <View style={styles.selectedUserAvatarContainer}>
           {item.avatar && item.avatar !== 'none' ? (
-            <Image source={{ uri: item.avatar }} style={styles.selectedUserAvatar} />
+            <Image source={{ uri: item.avatar.link }} style={styles.selectedUserAvatar} />
           ) : (
             <FontAwesome name="user-circle-o" size={50} color="#1E90FF" />
           )}
