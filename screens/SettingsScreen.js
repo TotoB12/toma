@@ -109,11 +109,12 @@ const SettingsScreen = () => {
       const clientId = 'YOUR_IMGUR_CLIENT_ID'; // Replace with your Imgur client ID
       const authHeader = 'Client-ID ' + clientId;
 
-      // Make the POST request
+      // Make the POST request to upload the new image
       const response = await fetch('https://api.imgur.com/3/image', {
         method: 'POST',
         headers: {
           Authorization: authHeader,
+          Accept: 'application/json',
         },
         body: formData,
       });
@@ -122,7 +123,32 @@ const SettingsScreen = () => {
 
       if (result.success) {
         const imageData = result.data;
-        // Save the imageUrl to the Realtime Database under the user's 'avatar' field
+
+        // If there is an existing avatar, delete it from Imgur
+        if (userInfo && userInfo.avatar && userInfo.avatar !== 'none') {
+          const oldDeleteHash = userInfo.avatar.deletehash;
+          if (oldDeleteHash) {
+            try {
+              const deleteResponse = await fetch(`https://api.imgur.com/3/image/${oldDeleteHash}`, {
+                method: 'DELETE',
+                headers: {
+                  Authorization: authHeader,
+                  Accept: 'application/json',
+                },
+              });
+              const deleteResult = await deleteResponse.json();
+              if (deleteResult.success) {
+                console.log('Old avatar deleted successfully from Imgur');
+              } else {
+                console.error('Failed to delete old avatar from Imgur:', deleteResult);
+              }
+            } catch (deleteError) {
+              console.error('Error deleting old avatar:', deleteError);
+            }
+          }
+        }
+
+        // Save the new imageData to the Realtime Database under the user's 'avatar' field
         const user = auth.currentUser;
         const userRef = ref(database, `users/${user.uid}`);
         await update(userRef, { avatar: imageData });
