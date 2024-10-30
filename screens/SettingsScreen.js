@@ -106,7 +106,7 @@ const SettingsScreen = () => {
       });
 
       // Imgur client ID
-      const clientId = 'YOUR_IMGUR_CLIENT_ID'; // Replace with your Imgur client ID
+      const clientId = '094005370d443cb'; // Replace with your Imgur client ID
       const authHeader = 'Client-ID ' + clientId;
 
       // Make the POST request to upload the new image

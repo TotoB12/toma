@@ -8,9 +8,10 @@ import {
     ActivityIndicator,
     SafeAreaView,
     Image,
+    Alert,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { AntDesign, FontAwesome } from '@expo/vector-icons';
+import { AntDesign, FontAwesome, Ionicons } from '@expo/vector-icons';
 import { database, auth } from '../firebase';
 import {
     ref,
@@ -23,7 +24,9 @@ import {
 } from 'firebase/database';
 import { StatusBar } from 'expo-status-bar';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { GiftedChat } from 'react-native-gifted-chat';
+import { GiftedChat, Actions } from 'react-native-gifted-chat';
+import * as ImagePicker from 'expo-image-picker';
+import { Video } from 'expo-av';
 
 const ChatScreen = () => {
     const navigation = useNavigation();
@@ -35,6 +38,90 @@ const ChatScreen = () => {
     const [chatId, setChatId] = useState(null);
     const currentUser = auth.currentUser;
     const headerHeight = useHeaderHeight();
+
+    // New state for media
+    const [media, setMedia] = useState(null); // { uri, type }
+
+    // Function to pick media
+    const pickMedia = async () => {
+        let permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+        if (permissionResult.granted === false) {
+            Alert.alert(
+                'Permission required',
+                'Permission to access media library is required!'
+            );
+            return;
+        }
+
+        let pickerResult = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.All,
+            allowsEditing: false,
+            quality: 1,
+        });
+
+        if (!pickerResult.canceled) {
+            setMedia(pickerResult.assets[0]); // Store the selected media
+        }
+    };
+
+    // Function to upload media to Imgur
+    const uploadMediaToImgur = async (uri, type) => {
+        try {
+            const formData = new FormData();
+
+            const uriParts = uri.split('.');
+            const fileType = uriParts[uriParts.length - 1];
+
+            let mediaType = '';
+
+            if (type.startsWith('image')) {
+                mediaType = `image/${fileType}`;
+                formData.append('image', {
+                    uri: uri,
+                    name: `media.${fileType}`,
+                    type: mediaType,
+                });
+            } else if (type.startsWith('video')) {
+                mediaType = `video/${fileType}`;
+                formData.append('video', {
+                    uri: uri,
+                    name: `media.${fileType}`,
+                    type: mediaType,
+                });
+            } else {
+                Alert.alert('Unsupported media', 'Only images and videos are supported.');
+                return null;
+            }
+
+            const clientId = '094005370d443cb'; // Replace with your Imgur client ID
+            const authHeader = 'Client-ID ' + clientId;
+
+            const response = await fetch('https://api.imgur.com/3/upload', {
+                method: 'POST',
+                headers: {
+                    Authorization: authHeader,
+                    Accept: 'application/json',
+                },
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const mediaData = result.data;
+                return mediaData;
+            } else {
+                console.error('Imgur upload failed:', result);
+                Alert.alert('Upload failed', 'Failed to upload media to Imgur.');
+                return null;
+            }
+        } catch (error) {
+            console.error('Error uploading media:', error);
+            Alert.alert('Error', 'An error occurred while uploading the media.');
+            return null;
+        }
+    };
 
     // Function to get existing chat ID
     const getChatId = async () => {
@@ -102,12 +189,12 @@ const ChatScreen = () => {
                                         text: data.content,
                                         createdAt: new Date(data.timestamp),
                                         user: sender,
+                                        image: data.image ? data.image.link : undefined, // Include image
+                                        video: data.video ? data.video.link : undefined, // Include video
                                     };
                                 })
                             );
-                            setMessages(
-                                messagesList
-                            );
+                            setMessages(messagesList);
                         }
                         setLoading(false);
                     });
@@ -203,9 +290,11 @@ const ChatScreen = () => {
         });
     }, [navigation, chatUsers, headerHeight]);
 
+    // Function to handle sending messages
     const onSend = useCallback(
         async (messages = []) => {
             const message = messages[0];
+
             try {
                 let cid = chatId;
 
@@ -235,12 +324,26 @@ const ChatScreen = () => {
                     setChatId(cid);
                 }
 
-                const messageData = {
-                    content: message.text,
+                let messageData = {
+                    content: message.text || '',
                     timestamp: serverTimestamp(),
                     senderId: currentUser.uid,
                     seen: false,
                 };
+
+                if (media) {
+                    // Upload media to Imgur
+                    const mediaData = await uploadMediaToImgur(media.uri, media.type);
+                    if (mediaData) {
+                        if (media.type.startsWith('image')) {
+                            messageData.image = mediaData;
+                        } else if (media.type.startsWith('video')) {
+                            messageData.video = mediaData;
+                        }
+                    }
+                    // Reset media
+                    setMedia(null);
+                }
 
                 // Add message to messages collection
                 await push(ref(database, `messages/${cid}`), messageData);
@@ -251,8 +354,47 @@ const ChatScreen = () => {
                 console.error('Error sending message:', error);
             }
         },
-        [chatId]
+        [chatId, media]
     );
+
+    // Custom action button to pick media
+    const renderActions = (props) => (
+        <Actions
+            {...props}
+            options={{
+                ['Choose From Library']: pickMedia,
+                Cancel: () => { },
+            }}
+            icon={() => (
+                <Ionicons name="attach-outline" size={24} color="#000" />
+            )}
+        />
+    );
+
+    // Render selected media in the accessory bar
+    const renderAccessory = () => {
+        if (!media) return null;
+        return (
+            <View style={styles.mediaPreviewContainer}>
+                {media.type.startsWith('image') ? (
+                    <Image source={{ uri: media.uri }} style={styles.mediaPreview} />
+                ) : (
+                    <Video
+                        source={{ uri: media.uri }}
+                        style={styles.mediaPreview}
+                        useNativeControls
+                        resizeMode="contain"
+                    />
+                )}
+                <TouchableOpacity
+                    style={styles.removeMediaButton}
+                    onPress={() => setMedia(null)}
+                >
+                    <AntDesign name="closecircle" size={24} color="#fff" />
+                </TouchableOpacity>
+            </View>
+        );
+    };
 
     if (loading) {
         return (
@@ -278,6 +420,8 @@ const ChatScreen = () => {
                 showUserAvatar={true}
                 renderAvatarOnTop={true}
                 renderUsernameOnMessage={chatUsers.length > 1}
+                renderActions={renderActions}
+                renderAccessory={renderAccessory}
             />
         </SafeAreaView>
     );
@@ -310,6 +454,24 @@ const styles = StyleSheet.create({
     headerTitleText: {
         color: '#fff',
         fontSize: 18,
+    },
+    mediaPreviewContainer: {
+        position: 'relative',
+        margin: 10,
+        alignItems: 'center',
+    },
+    mediaPreview: {
+        width: 200,
+        height: 200,
+        borderRadius: 10,
+    },
+    removeMediaButton: {
+        position: 'absolute',
+        top: 5,
+        right: 5,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 12,
+        padding: 2,
     },
 });
 
