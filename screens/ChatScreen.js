@@ -1,28 +1,38 @@
 // screens/ChatScreen.js
-import React, { useEffect, useState, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useState, useLayoutEffect, useCallback } from 'react';
 import {
-    View, Text, TouchableOpacity,
-    StyleSheet, TextInput, SafeAreaView, Image, KeyboardAvoidingView,
-    Platform, Keyboard, FlatList,
-    ActivityIndicator
+    View,
+    Text,
+    TouchableOpacity,
+    StyleSheet,
+    ActivityIndicator,
+    SafeAreaView,
+    Image,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AntDesign, FontAwesome } from '@expo/vector-icons';
 import { database, auth } from '../firebase';
-import { ref, onValue, push, get, set, serverTimestamp, off } from 'firebase/database';
+import {
+    ref,
+    onValue,
+    push,
+    get,
+    set,
+    serverTimestamp,
+    off,
+} from 'firebase/database';
 import { StatusBar } from 'expo-status-bar';
 import { useHeaderHeight } from '@react-navigation/elements';
+import { GiftedChat } from 'react-native-gifted-chat';
 
 const ChatScreen = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const { userIds } = route.params;
     const [chatUsers, setChatUsers] = useState([]);
-    const [message, setMessage] = useState('');
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(true);
     const [chatId, setChatId] = useState(null);
-    const flatListRef = useRef(null);
     const currentUser = auth.currentUser;
     const headerHeight = useHeaderHeight();
 
@@ -39,7 +49,9 @@ const ChatScreen = () => {
             for (const cid in chatsData) {
                 const chat = chatsData[cid];
                 const chatParticipants = chat.participants.sort();
-                if (JSON.stringify(chatParticipants) === JSON.stringify(participants)) {
+                if (
+                    JSON.stringify(chatParticipants) === JSON.stringify(participants)
+                ) {
                     return cid;
                 }
             }
@@ -57,14 +69,45 @@ const ChatScreen = () => {
 
                     // Subscribe to messages
                     const messagesRef = ref(database, `messages/${cid}`);
-                    const unsubscribe = onValue(messagesRef, (snapshot) => {
+                    const unsubscribe = onValue(messagesRef, async (snapshot) => {
                         const messagesData = snapshot.val();
                         if (messagesData) {
-                            const messagesList = Object.entries(messagesData).map(([id, data]) => ({
-                                id,
-                                ...data
-                            })).sort((a, b) => a.timestamp - b.timestamp);
-                            setMessages(messagesList);
+                            const messagesList = await Promise.all(
+                                Object.entries(messagesData).map(async ([id, data]) => {
+                                    // Fetch sender info
+                                    let sender = {
+                                        _id: data.senderId,
+                                        name: '',
+                                        avatar: null,
+                                    };
+
+                                    if (data.senderId !== currentUser.uid) {
+                                        const userRef = ref(database, `users/${data.senderId}`);
+                                        const userSnapshot = await get(userRef);
+                                        if (userSnapshot.exists()) {
+                                            const userData = userSnapshot.val();
+                                            sender.name = `${userData.firstName} ${userData.lastName}`;
+                                            sender.avatar =
+                                                userData.avatar && userData.avatar !== 'none'
+                                                    ? userData.avatar.link
+                                                    : null;
+                                        }
+                                    } else {
+                                        sender.name = 'You';
+                                        sender.avatar = currentUser.photoURL || null;
+                                    }
+
+                                    return {
+                                        _id: id,
+                                        text: data.content,
+                                        createdAt: new Date(data.timestamp),
+                                        user: sender,
+                                    };
+                                })
+                            );
+                            setMessages(
+                                messagesList
+                            );
                         }
                         setLoading(false);
                     });
@@ -106,7 +149,10 @@ const ChatScreen = () => {
         navigation.setOptions({
             headerShown: true,
             headerLeft: () => (
-                <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 15 }}>
+                <TouchableOpacity
+                    onPress={() => navigation.goBack()}
+                    style={{ marginLeft: 15 }}
+                >
                     <AntDesign name="arrowleft" size={24} color="#fff" />
                 </TouchableOpacity>
             ),
@@ -116,19 +162,34 @@ const ChatScreen = () => {
                     return (
                         <View style={styles.headerTitleContainer}>
                             {chatUser.avatar && chatUser.avatar !== 'none' ? (
-                                <Image source={{ uri: chatUser.avatar.link }} style={styles.headerAvatar} />
+                                <Image
+                                    source={{ uri: chatUser.avatar.link }}
+                                    style={styles.headerAvatar}
+                                />
                             ) : (
-                                <FontAwesome name="user-circle-o" size={40} color="#fff" style={styles.headerAvatarIcon} />
+                                <FontAwesome
+                                    name="user-circle-o"
+                                    size={40}
+                                    color="#fff"
+                                    style={styles.headerAvatarIcon}
+                                />
                             )}
-                            <Text style={styles.headerTitleText}>{chatUser.firstName} {chatUser.lastName}</Text>
+                            <Text style={styles.headerTitleText}>
+                                {chatUser.firstName} {chatUser.lastName}
+                            </Text>
                         </View>
                     );
                 } else {
                     return (
                         <View style={styles.headerTitleContainer}>
-                            <FontAwesome name="users" size={40} color="#fff" style={styles.headerAvatarIcon} />
+                            <FontAwesome
+                                name="users"
+                                size={40}
+                                color="#fff"
+                                style={styles.headerAvatarIcon}
+                            />
                             <Text style={styles.headerTitleText}>
-                                {chatUsers.map(u => u.firstName).join(', ')}
+                                {chatUsers.map((u) => u.firstName).join(', ')}
                             </Text>
                         </View>
                     );
@@ -142,103 +203,56 @@ const ChatScreen = () => {
         });
     }, [navigation, chatUsers, headerHeight]);
 
-    const handleSend = async () => {
-        if (!message.trim()) return;
+    const onSend = useCallback(
+        async (messages = []) => {
+            const message = messages[0];
+            try {
+                let cid = chatId;
 
-        try {
-            let cid = chatId;
+                if (!cid) {
+                    // Create new chat
+                    const newChatRef = push(ref(database, 'chats'));
+                    cid = newChatRef.key;
 
-            if (!cid) {
-                // Create new chat
-                const newChatRef = push(ref(database, 'chats'));
-                cid = newChatRef.key;
+                    const chatParticipants = [...userIds, currentUser.uid].sort();
 
-                const chatParticipants = [...userIds, currentUser.uid].sort();
+                    // Set up chat data
+                    await set(ref(database, `chats/${cid}`), {
+                        participants: chatParticipants,
+                        createdAt: serverTimestamp(),
+                        lastMessage: {
+                            content: '',
+                            timestamp: serverTimestamp(),
+                            senderId: currentUser.uid,
+                        },
+                    });
 
-                // Set up chat data
-                await set(ref(database, `chats/${cid}`), {
-                    participants: chatParticipants,
-                    createdAt: serverTimestamp(),
-                    lastMessage: {
-                        content: '',
-                        timestamp: serverTimestamp(),
-                        senderId: currentUser.uid
+                    // Add chat reference to all users
+                    for (const uid of chatParticipants) {
+                        await set(ref(database, `user-chats/${uid}/${cid}`), true);
                     }
-                });
 
-                // Add chat reference to all users
-                for (const uid of chatParticipants) {
-                    await set(ref(database, `user-chats/${uid}/${cid}`), true);
+                    setChatId(cid);
                 }
 
-                setChatId(cid);
+                const messageData = {
+                    content: message.text,
+                    timestamp: serverTimestamp(),
+                    senderId: currentUser.uid,
+                    seen: false,
+                };
 
-                // Subscribe to messages
-                const messagesRef = ref(database, `messages/${cid}`);
-                const unsubscribe = onValue(messagesRef, (snapshot) => {
-                    const messagesData = snapshot.val();
-                    if (messagesData) {
-                        const messagesList = Object.entries(messagesData).map(([id, data]) => ({
-                            id,
-                            ...data
-                        })).sort((a, b) => a.timestamp - b.timestamp);
-                        setMessages(messagesList);
-                    }
-                    setLoading(false);
-                });
+                // Add message to messages collection
+                await push(ref(database, `messages/${cid}`), messageData);
+
+                // Update last message in chat
+                await set(ref(database, `chats/${cid}/lastMessage`), messageData);
+            } catch (error) {
+                console.error('Error sending message:', error);
             }
-
-            const messageData = {
-                content: message.trim(),
-                timestamp: serverTimestamp(),
-                senderId: currentUser.uid,
-                seen: false
-            };
-
-            // Add message to messages collection
-            await push(ref(database, `messages/${cid}`), messageData);
-
-            // Update last message in chat
-            await set(ref(database, `chats/${cid}/lastMessage`), messageData);
-
-            setMessage('');
-        } catch (error) {
-            console.error('Error sending message:', error);
-        }
-    };
-
-    const renderMessage = ({ item }) => {
-        const isCurrentUser = item.senderId === currentUser.uid;
-        const sender = chatUsers.find(u => u.uid === item.senderId);
-        const senderName = sender ? `${sender.firstName} ${sender.lastName}` : 'Unknown';
-
-        return (
-            <View style={[
-                styles.messageContainer,
-                isCurrentUser ? styles.currentUserMessage : styles.otherUserMessage
-            ]}>
-                {!isCurrentUser && chatUsers.length > 1 && (
-                    <Text style={styles.senderName}>{senderName}</Text>
-                )}
-                <Text style={styles.messageText}>{item.content}</Text>
-                <Text style={styles.messageTime}>
-                    {new Date(item.timestamp).toLocaleTimeString([], {
-                        hour: '2-digit',
-                        minute: '2-digit'
-                    })}
-                </Text>
-            </View>
-        );
-    };
-
-    // Scroll to bottom when messages change
-    useEffect(() => {
-        if (flatListRef.current && messages.length > 0) {
-            setTimeout(() => {
-                flatListRef.current.scrollToEnd({ animated: true });
-            }, 100);
-        }
-    }, [messages]);
+        },
+        [chatId]
+    );
 
     if (loading) {
         return (
@@ -251,47 +265,20 @@ const ChatScreen = () => {
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar style="light" />
-            <KeyboardAvoidingView
-                style={styles.keyboardAvoidingView}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={headerHeight + (Platform.OS === 'ios' ? 20 : 0)}
-            >
-                <View style={styles.messagesContainer}>
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        renderItem={renderMessage}
-                        keyExtractor={item => item.id}
-                        contentContainerStyle={styles.messagesList}
-                        onContentSizeChange={() => {
-                            if (flatListRef.current && messages.length > 0) {
-                                flatListRef.current.scrollToEnd({ animated: false });
-                            }
-                        }}
-                    />
-                </View>
-
-                <View style={styles.inputContainer}>
-                    <TextInput
-                        style={styles.textInput}
-                        placeholder="Type a message"
-                        placeholderTextColor="#888"
-                        value={message}
-                        onChangeText={setMessage}
-                        multiline
-                    />
-                    <TouchableOpacity
-                        style={[
-                            styles.sendButton,
-                            !message.trim() && styles.sendButtonDisabled
-                        ]}
-                        onPress={handleSend}
-                        disabled={!message.trim()}
-                    >
-                        <AntDesign name="arrowright" size={24} color="#fff" />
-                    </TouchableOpacity>
-                </View>
-            </KeyboardAvoidingView>
+            <GiftedChat
+                messages={messages}
+                onSend={(messages) => onSend(messages)}
+                user={{
+                    _id: currentUser.uid,
+                    name: currentUser.displayName || 'You',
+                    avatar: currentUser.photoURL || null,
+                }}
+                inverted={false}
+                placeholder="Type a message..."
+                showUserAvatar={true}
+                renderAvatarOnTop={true}
+                renderUsernameOnMessage={chatUsers.length > 1}
+            />
         </SafeAreaView>
     );
 };
@@ -306,9 +293,6 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#000',
-    },
-    keyboardAvoidingView: {
-        flex: 1,
     },
     headerTitleContainer: {
         flexDirection: 'row',
@@ -326,72 +310,6 @@ const styles = StyleSheet.create({
     headerTitleText: {
         color: '#fff',
         fontSize: 18,
-    },
-    messagesContainer: {
-        flex: 1,
-        paddingHorizontal: 10,
-    },
-    messagesList: {
-        paddingVertical: 20,
-    },
-    messageContainer: {
-        maxWidth: '80%',
-        padding: 10,
-        borderRadius: 15,
-        marginVertical: 5,
-    },
-    currentUserMessage: {
-        alignSelf: 'flex-end',
-        backgroundColor: '#1E90FF',
-        borderTopRightRadius: 5,
-    },
-    otherUserMessage: {
-        alignSelf: 'flex-start',
-        backgroundColor: '#333',
-        borderTopLeftRadius: 5,
-    },
-    messageText: {
-        color: '#fff',
-        fontSize: 16,
-    },
-    senderName: {
-        color: '#1E90FF',
-        fontSize: 12,
-        marginBottom: 5,
-    },
-    messageTime: {
-        color: 'rgba(255, 255, 255, 0.7)',
-        fontSize: 12,
-        alignSelf: 'flex-end',
-        marginTop: 5,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        padding: 10,
-        borderTopColor: '#444',
-        borderTopWidth: 1,
-        backgroundColor: '#000',
-        alignItems: 'flex-end',
-    },
-    textInput: {
-        flex: 1,
-        maxHeight: 100,
-        backgroundColor: '#222',
-        color: '#fff',
-        borderRadius: 20,
-        paddingHorizontal: 15,
-        paddingVertical: 10,
-        marginRight: 10,
-    },
-    sendButton: {
-        backgroundColor: '#1E90FF',
-        borderRadius: 20,
-        padding: 10,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    sendButtonDisabled: {
-        backgroundColor: '#555',
     },
 });
 
