@@ -9,6 +9,7 @@ import {
     SafeAreaView,
     Image,
     Alert,
+    Keyboard,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { AntDesign, FontAwesome, Ionicons } from '@expo/vector-icons';
@@ -24,7 +25,7 @@ import {
 } from 'firebase/database';
 import { StatusBar } from 'expo-status-bar';
 import { useHeaderHeight } from '@react-navigation/elements';
-import { GiftedChat, Actions } from 'react-native-gifted-chat';
+import { GiftedChat } from 'react-native-gifted-chat';
 import * as ImagePicker from 'expo-image-picker';
 import { Video } from 'expo-av';
 
@@ -41,6 +42,7 @@ const ChatScreen = () => {
 
     // New state for media
     const [media, setMedia] = useState(null); // { uri, type }
+    const [showTools, setShowTools] = useState(false); // New state for tools area visibility
 
     // Function to pick media
     const pickMedia = async () => {
@@ -357,43 +359,63 @@ const ChatScreen = () => {
         [chatId, media]
     );
 
-    // Custom action button to pick media
+    // Custom action button to toggle tools area
     const renderActions = (props) => (
-        <Actions
-            {...props}
-            options={{
-                ['Choose From Library']: pickMedia,
-                Cancel: () => { },
+        <TouchableOpacity
+            style={styles.plusIconContainer}
+            onPress={() => {
+                setShowTools(!showTools);
+                if (!showTools) {
+                    Keyboard.dismiss(); // Hide keyboard when tools are opened
+                }
             }}
-            icon={() => (
-                <Ionicons name="attach-outline" size={24} color="#000" />
-            )}
-        />
+        >
+            <AntDesign name="pluscircle" size={28} color="#1E90FF" />
+        </TouchableOpacity>
     );
 
-    // Render selected media in the accessory bar
+    // Render tools area or media preview
     const renderAccessory = () => {
-        if (!media) return null;
-        return (
-            <View style={styles.mediaPreviewContainer}>
-                {media.type.startsWith('image') ? (
-                    <Image source={{ uri: media.uri }} style={styles.mediaPreview} />
-                ) : (
-                    <Video
-                        source={{ uri: media.uri }}
-                        style={styles.mediaPreview}
-                        useNativeControls
-                        resizeMode="contain"
-                    />
-                )}
-                <TouchableOpacity
-                    style={styles.removeMediaButton}
-                    onPress={() => setMedia(null)}
-                >
-                    <AntDesign name="closecircle" size={24} color="#fff" />
-                </TouchableOpacity>
-            </View>
-        );
+        if (showTools) {
+            return (
+                <View style={styles.toolsContainer}>
+                    <TouchableOpacity
+                        style={styles.toolButton}
+                        onPress={() => {
+                            pickMedia();
+                            setShowTools(false);
+                        }}
+                    >
+                        <View style={styles.toolIconContainer}>
+                            <Ionicons name="image" size={30} color="#fff" />
+                        </View>
+                        <Text style={styles.toolText}>Photos</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        } else if (media) {
+            return (
+                <View style={styles.mediaPreviewContainer}>
+                    {media.type.startsWith('image') ? (
+                        <Image source={{ uri: media.uri }} style={styles.mediaPreview} />
+                    ) : (
+                        <Video
+                            source={{ uri: media.uri }}
+                            style={styles.mediaPreview}
+                            useNativeControls
+                            resizeMode="contain"
+                        />
+                    )}
+                    <TouchableOpacity
+                        style={styles.removeMediaButton}
+                        onPress={() => setMedia(null)}
+                    >
+                        <AntDesign name="closecircle" size={24} color="#fff" />
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+        return null;
     };
 
     if (loading) {
@@ -422,6 +444,14 @@ const ChatScreen = () => {
                 renderUsernameOnMessage={chatUsers.length > 1}
                 renderActions={renderActions}
                 renderAccessory={renderAccessory}
+                onInputTextChanged={() => {
+                    setShowTools(false);
+                }}
+                textInputProps={{
+                    onFocus: () => {
+                        setShowTools(false);
+                    },
+                }}
             />
         </SafeAreaView>
     );
@@ -454,6 +484,34 @@ const styles = StyleSheet.create({
     headerTitleText: {
         color: '#fff',
         fontSize: 18,
+    },
+    plusIconContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginLeft: 5,
+        marginBottom: 5,
+    },
+    toolsContainer: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        backgroundColor: '#f0f0f0',
+        paddingVertical: 10,
+    },
+    toolButton: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toolIconContainer: {
+        backgroundColor: '#1E90FF',
+        borderRadius: 30,
+        padding: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toolText: {
+        marginTop: 5,
+        color: '#000',
+        fontSize: 16,
     },
     mediaPreviewContainer: {
         position: 'relative',
