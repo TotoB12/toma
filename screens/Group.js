@@ -111,6 +111,7 @@ const Group = () => {
                                 onPress={() => handleOnPress(user)}
                                 selected={getSelected(user)}
                                 showForwardIcon={false}
+                                avatar={user.data().avatar?.link}
                             />
                         </React.Fragment>
                     ))}

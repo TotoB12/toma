@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, FlatList, Alert, Image } from 'react-native';
 import { colors } from '../config/constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, query, where, getDocs } from 'firebase/firestore';
 import { database } from '../config/firebase';
 import Cell from '../components/Cell';
 
@@ -11,18 +11,31 @@ const ChatInfo = ({ route }) => {
     const { chatId, chatName } = route.params;
     const [users, setUsers] = useState([]);
     const [groupName, setGroupName] = useState('');
+    const [avatars, setAvatars] = useState({});
 
     useEffect(() => {
         const fetchChatInfo = async () => {
             try {
                 const chatRef = doc(database, 'chats', chatId);
                 const chatDoc = await getDoc(chatRef);
-
+    
                 if (chatDoc.exists()) {
                     const chatData = chatDoc.data();
                     if (chatData) {
                         if (Array.isArray(chatData.users)) {
                             setUsers(chatData.users);
+    
+                            // Fetch avatars
+                            const userEmails = chatData.users.map(user => user.email);
+                            const usersCollection = collection(database, 'users');
+                            const q = query(usersCollection, where('email', 'in', userEmails));
+                            const querySnapshot = await getDocs(q);
+                            const avatarsData = {};
+                            querySnapshot.forEach((userDoc) => {
+                                const userData = userDoc.data();
+                                avatarsData[userData.email] = userData.avatar?.link;
+                            });
+                            setAvatars(avatarsData);
                         }
                         if (chatData.groupName) {
                             setGroupName(chatData.groupName);
@@ -38,13 +51,21 @@ const ChatInfo = ({ route }) => {
                 console.error("Error fetching chat info: ", error);
             }
         };
-
+    
         fetchChatInfo();
     }, [chatId]);
 
     const renderUser = ({ item }) => (
         <View style={styles.userContainer}>
-            <Ionicons name="person-outline" size={30} color="black" />
+            {avatars[item.email] ? (
+                <Image source={{ uri: avatars[item.email] }} style={styles.avatarImage} />
+            ) : (
+                <View style={styles.avatar}>
+                    <Text style={styles.avatarLabel}>
+                        {item.name.trim().split(' ').reduce((prev, current) => `${prev}${current[0]}`, '')}
+                    </Text>
+                </View>
+            )}
             <View style={styles.userInfo}>
                 <Text style={styles.userName}>{item.name}</Text>
                 <Text style={styles.userEmail}>{item.email}</Text>
@@ -102,18 +123,22 @@ const styles = StyleSheet.create({
         marginTop: 2,
         color: '#565656',
     },
+    avatarImage: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+    },
     avatar: {
-        width: 168,
-        height: 168,
-        borderRadius: 84,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         alignItems: 'center',
         justifyContent: 'center',
-        alignSelf: 'center',
-        backgroundColor: colors.primary,
+        backgroundColor: colors.primary
     },
     avatarLabel: {
         fontSize: 20,
-        color: 'white',
+        color: 'white'
     },
     chatHeader: {
         flexDirection: 'row',

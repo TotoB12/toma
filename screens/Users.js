@@ -124,7 +124,7 @@ const Users = () => {
                 onPress={handleNewUser}
                 style={{ marginBottom: 10 }}
             />
-
+    
             {users.length === 0 ? (
                 <View style={styles.blankContainer}>
                     <Text style={styles.textContainer}>
@@ -145,6 +145,7 @@ const Users = () => {
                                 subtitle={handleSubtitle(user)}
                                 onPress={() => handleNavigate(user)}
                                 showForwardIcon={false}
+                                avatar={user.data().avatar?.link}
                             />
                         </React.Fragment>
                     ))}

@@ -132,6 +132,18 @@ const Profile = () => {
         alert('Show PP');
     };
 
+    useEffect(() => {
+        const unsubscribe = onSnapshot(doc(database, 'users', auth.currentUser.email), (doc) => {
+            if (doc.exists()) {
+                const userData = doc.data();
+                if (userData.avatar) {
+                    setAvatar(userData.avatar);
+                }
+            }
+        });
+        return () => unsubscribe();
+    }, []);
+
     return (
         <SafeAreaView style={styles.container}>
             {loading ? (

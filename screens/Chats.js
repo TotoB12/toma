@@ -12,6 +12,7 @@ const Chats = () => {
     const [chats, setChats] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedItems, setSelectedItems] = useState([]);
+    const [usersAvatars, setUsersAvatars] = useState({});
 
     useEffect(() => {
         navigation.setOptions({
@@ -119,9 +120,9 @@ const Chats = () => {
                     onPress: () => {
                         selectedItems.forEach(chatId => {
                             const chat = chats.find(chat => chat.id === chatId);
-                            const updatedUsers = chat.data().users.map(user => 
-                                user.email === auth?.currentUser?.email 
-                                    ? { ...user, deletedFromChat: true } 
+                            const updatedUsers = chat.data().users.map(user =>
+                                user.email === auth?.currentUser?.email
+                                    ? { ...user, deletedFromChat: true }
                                     : user
                             );
 
@@ -157,6 +158,27 @@ const Chats = () => {
         return new Date(chat.data().lastUpdated).toLocaleDateString(undefined, options);
     };
 
+    useEffect(() => {
+        const collectionUserRef = collection(database, 'users');
+        const unsubscribeUsers = onSnapshot(collectionUserRef, (snapshot) => {
+            const avatars = {};
+            snapshot.forEach(doc => {
+                const userData = doc.data();
+                avatars[userData.email] = userData.avatar?.link;
+            });
+            setUsersAvatars(avatars);
+        });
+
+        return () => unsubscribeUsers();
+    }, []);
+
+    const getOtherUserData = (chat) => {
+        const users = chat.data().users;
+        const currentUserEmail = auth?.currentUser?.email;
+        const otherUsers = users.filter(user => user.email !== currentUserEmail);
+        return otherUsers;
+    };
+
     return (
         <Pressable style={styles.container} onPress={deSelectItems}>
             {loading ? (
@@ -168,20 +190,34 @@ const Chats = () => {
                             <Text style={styles.textContainer}>You sure seem lonely. Create a new chat in the top right.</Text>
                         </View>
                     ) : (
-                        chats.map(chat => (
-                            <React.Fragment key={chat.id}>
-                                <ContactRow
-                                    style={getSelected(chat) ? styles.selectedContactRow : ""}
-                                    name={handleChatName(chat)}
-                                    subtitle={handleSubtitle(chat)}
-                                    subtitle2={handleSubtitle2(chat)}
-                                    onPress={() => handleOnPress(chat)}
-                                    onLongPress={() => handleLongPress(chat)}
-                                    selected={getSelected(chat)}
-                                    showForwardIcon={false}
-                                />
-                            </React.Fragment>
-                        ))
+                        chats.map(chat => {
+                            const otherUsers = getOtherUserData(chat);
+                            let avatar = null;
+
+                            if (otherUsers.length === 1) {
+                                const otherUserEmail = otherUsers[0].email;
+                                avatar = usersAvatars[otherUserEmail];
+                            } else if (chat.data().groupName) {
+                                // Optionally set a group avatar here
+                                avatar = null; // Or a default group icon
+                            }
+
+                            return (
+                                <React.Fragment key={chat.id}>
+                                    <ContactRow
+                                        style={getSelected(chat) ? styles.selectedContactRow : ""}
+                                        name={handleChatName(chat)}
+                                        subtitle={handleSubtitle(chat)}
+                                        subtitle2={handleSubtitle2(chat)}
+                                        onPress={() => handleOnPress(chat)}
+                                        onLongPress={() => handleLongPress(chat)}
+                                        selected={getSelected(chat)}
+                                        showForwardIcon={false}
+                                        avatar={avatar}
+                                    />
+                                </React.Fragment>
+                            )
+                        })
                     )}
                 </ScrollView>
             )}
