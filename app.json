@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "SimpleMessagingApp",
-    "slug": "simplemessagingapp",
+    "name": "Toma",
+    "slug": "toma",
     "version": "1.0.0",
     "platforms": [
       "ios",
