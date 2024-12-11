@@ -1,14 +1,12 @@
 // screens\Chat.js
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { GiftedChat, Bubble, Send, InputToolbar } from 'react-native-gifted-chat';
 import { auth, database } from '../config/firebase';
-import { collection, doc, onSnapshot, setDoc, getDoc, query, where } from 'firebase/firestore'; // Ensure this line is added
-import { getStorage, ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { collection, doc, onSnapshot, setDoc, getDoc, query, where } from 'firebase/firestore';
 import { colors } from '../config/constants';
 import * as ImagePicker from 'expo-image-picker';
-import uuid from 'react-native-uuid';
 
 function Chat({ route }) {
     const [messages, setMessages] = useState([]);
@@ -23,7 +21,6 @@ function Chat({ route }) {
             const messagesWithDate = chatData.messages.map((message) => ({
                 ...message,
                 createdAt: message.createdAt.toDate(),
-                image: message.image ?? '',
             }));
             setRawMessages(messagesWithDate);
 
@@ -81,74 +78,88 @@ function Chat({ route }) {
         const data = chatData.messages.map((message) => ({
             ...message,
             createdAt: message.createdAt.toDate(),
-            image: message.image ?? "",
         }));
 
         const messagesWillSend = [{ ...m[0], sent: true, received: false }];
         let chatMessages = GiftedChat.append(data, messagesWillSend);
 
-        setDoc(doc(database, 'chats', route.params.id), {
+        await setDoc(doc(database, 'chats', route.params.id), {
             messages: chatMessages,
             lastUpdated: Date.now()
         }, { merge: true });
-    }, [route.params.id, messages]);
+    }, [route.params.id]);
 
     const pickImage = async () => {
         let result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ImagePicker.MediaTypeOptions.All, // includes videos
             allowsEditing: true,
+            aspect: [4, 3],
             quality: 1,
         });
 
+        console.log(result);
+
         if (!result.canceled) {
-            await uploadImageAsync(result.assets[0].uri);
+            await uploadImage(result.assets[0].uri);
         }
     };
 
-    const uploadImageAsync = async (uri) => {
-        setUploading(true);
-        const blob = await new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.onload = () => resolve(xhr.response);
-            xhr.onerror = () => reject(new TypeError("Network request failed"));
-            xhr.responseType = "blob";
-            xhr.open("GET", uri, true);
-            xhr.send(null);
-        });
-        const randomString = uuid.v4();
-        const fileRef = ref(getStorage(), randomString);
+    const uploadImage = async (uri) => {
+        try {
+            setUploading(true);
+            const formData = new FormData();
 
-        const uploadTask = uploadBytesResumable(fileRef, blob);
+            const uriParts = uri.split('.');
+            const fileType = uriParts[uriParts.length - 1];
 
-        uploadTask.on(
-            "state_changed",
-            (snapshot) => {
-                const progress =
-                    (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log("Upload percent:", progress);
-            },
-            (error) => {
-                console.log(error);
-                reject(error);
-            },
-            async () => {
-                const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-                setUploading(false);
+            formData.append('image', {
+                uri: uri,
+                name: `chatimage.${fileType}`,
+                type: `image/${fileType}`,
+            });
+
+            const clientId = '094005370d443cb';
+            const authHeader = 'Client-ID ' + clientId;
+
+            const response = await fetch('https://api.imgur.com/3/image', {
+                method: 'POST',
+                headers: {
+                    Authorization: authHeader,
+                    Accept: 'application/json',
+                },
+                body: formData,
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                const imageData = result.data;
+
+                // Now, create a message with the image data
                 onSend([
                     {
-                        _id: randomString,
+                        _id: imageData.id, // Use image ID or generate a new one
                         createdAt: new Date(),
                         text: "",
-                        image: downloadUrl,
+                        image: imageData.link, // The image URL from Imgur
                         user: {
                             _id: auth?.currentUser?.email,
                             name: auth?.currentUser?.displayName,
-                            avatar: "https://i.pravatar.cc/300",
+                            avatar: usersAvatars[auth?.currentUser?.email],
                         },
+                        imageData: imageData, // Save the full image data
                     },
                 ]);
+            } else {
+                console.error('Imgur upload failed:', result);
+                Alert.alert('Upload failed', 'Failed to upload image to Imgur.');
             }
-        );
+        } catch (error) {
+            console.error('Error uploading image:', error);
+            Alert.alert('Error', 'An error occurred while uploading the image.');
+        } finally {
+            setUploading(false);
+        }
     };
 
     const renderBubble = useMemo(() => (props) => (
@@ -218,7 +229,7 @@ function Chat({ route }) {
                 user={{
                     _id: auth?.currentUser?.email,
                     name: auth?.currentUser?.displayName,
-                    avatar: 'https://i.pravatar.cc/300'
+                    avatar: usersAvatars[auth?.currentUser?.email]
                 }}
                 renderBubble={renderBubble}
                 renderSend={renderSend}
